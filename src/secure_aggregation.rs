@@ -342,10 +342,7 @@ where
         .collect();
     sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs
-        .iter()
-        .map(|(_, pk)| **pk)
-        .collect();
+    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs.iter().map(|(_, pk)| **pk).collect();
 
     // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
     let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
@@ -354,7 +351,12 @@ where
     }
 
     // Perform standard verification
-    <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), <C as BlsSignatureBasic>::DST)
+    <C as BlsSignatureCore>::core_verify(
+        aggregated_pk,
+        signature,
+        msg.as_ref(),
+        <C as BlsSignatureBasic>::DST,
+    )
 }
 
 /// Verify secure aggregation for MessageAugmentation scheme with legacy support
@@ -383,10 +385,7 @@ where
         .collect();
     sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs
-        .iter()
-        .map(|(_, pk)| **pk)
-        .collect();
+    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs.iter().map(|(_, pk)| **pk).collect();
 
     // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
     let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
@@ -395,7 +394,12 @@ where
     }
 
     // Perform standard verification
-    <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), <C as BlsSignatureMessageAugmentation>::DST)
+    <C as BlsSignatureCore>::core_verify(
+        aggregated_pk,
+        signature,
+        msg.as_ref(),
+        <C as BlsSignatureMessageAugmentation>::DST,
+    )
 }
 
 /// Verify secure aggregation for ProofOfPossession scheme with legacy support
@@ -424,10 +428,7 @@ where
         .collect();
     sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs
-        .iter()
-        .map(|(_, pk)| **pk)
-        .collect();
+    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs.iter().map(|(_, pk)| **pk).collect();
 
     // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
     let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
@@ -436,7 +437,12 @@ where
     }
 
     // Perform standard verification
-    <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), <C as BlsSignaturePop>::SIG_DST)
+    <C as BlsSignatureCore>::core_verify(
+        aggregated_pk,
+        signature,
+        msg.as_ref(),
+        <C as BlsSignaturePop>::SIG_DST,
+    )
 }
 
 #[cfg(test)]

@@ -72,11 +72,8 @@ pub use traits::*;
 
 // Re-export commonly used functions from secure_aggregation
 pub use secure_aggregation::{
-    aggregate_secure,
-    aggregate_secure_with_mode,
-    verify_secure_basic_with_mode,
-    verify_secure_message_augmentation_with_mode,
-    verify_secure_pop_with_mode,
+    aggregate_secure, aggregate_secure_with_mode, verify_secure_basic_with_mode,
+    verify_secure_message_augmentation_with_mode, verify_secure_pop_with_mode,
 };
 
 pub use vsss_rs;

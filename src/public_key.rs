@@ -135,12 +135,12 @@ impl<C: BlsSignatureImpl> PublicKey<C> {
 }
 
 // Legacy serialization support
-impl<C: BlsSignatureImpl> PublicKey<C> 
+impl<C: BlsSignatureImpl> PublicKey<C>
 where
     C::PublicKey: LegacyG1Point,
 {
     /// Serialize with legacy format support
-    /// 
+    ///
     /// # Arguments
     /// * `legacy` - If true, uses legacy format; if false, uses modern format
     pub fn to_bytes_with_mode(&self, legacy: bool) -> Vec<u8> {
@@ -150,9 +150,9 @@ where
             self.to_bytes()
         }
     }
-    
+
     /// Deserialize with legacy format support
-    /// 
+    ///
     /// # Arguments
     /// * `bytes` - The bytes to deserialize
     /// * `legacy` - If true, expects legacy format; if false, expects modern format
@@ -163,21 +163,21 @@ where
                 actual: bytes.len(),
             });
         }
-        
+
         let mut array = [0u8; 48];
         array.copy_from_slice(bytes);
-        
+
         let point = C::PublicKey::deserialize_g1(&array, legacy)?;
         Ok(Self(point))
     }
-    
+
     /// Try to deserialize from either format automatically
-    /// 
+    ///
     /// First tries modern format, then falls back to legacy format
     pub fn from_bytes_auto(bytes: &[u8]) -> BlsResult<Self> {
         // Check format hints first
         let format = Self::detect_format(bytes);
-        
+
         match format {
             SerializationFormat::Legacy => {
                 // Definitely legacy format
@@ -192,13 +192,13 @@ where
                 if let Ok(pk) = Self::from_bytes_with_mode(bytes, false) {
                     return Ok(pk);
                 }
-                
+
                 // Fall back to legacy format
                 Self::from_bytes_with_mode(bytes, true)
             }
         }
     }
-    
+
     /// Detect the serialization format of the given bytes
     pub fn detect_format(bytes: &[u8]) -> SerializationFormat {
         if bytes.len() < 48 {
