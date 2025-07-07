@@ -37,6 +37,7 @@ mod public_key;
 mod public_key_share;
 mod secret_key;
 mod secret_key_share;
+mod secure_aggregation;
 mod sig_types;
 mod sign_crypt_ciphertext;
 mod sign_decryption_share;
