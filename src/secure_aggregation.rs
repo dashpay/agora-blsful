@@ -55,7 +55,7 @@ fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
         hasher.update(base_hash);
         let hash: [u8; 32] = hasher.finalize().into();
 
-        // Convert to scalar using raw modular reduction (matching C++)
+        // Convert to scalar using proper byte interpretation (matching C++)
         // C++ does: bn_read_bin(computedTs[i], hash, 32); bn_mod_basic(computedTs[i], computedTs[i], order);
         // This interprets the hash as a big-endian integer and reduces modulo field order
 
@@ -82,10 +82,10 @@ fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
             ));
         }
 
-        // The representation is now in big-endian format
-        // Convert to little-endian if that's what the field element expects
-        #[cfg(target_endian = "little")]
-        repr_bytes.reverse();
+        // NOTE: Removed the platform-dependent endianness conversion
+        // The field representation should be interpreted according to the
+        // cryptographic library's specification, not the platform endianness
+        // This fixes the cross-platform compatibility issue
 
         // Create scalar from representation - this automatically reduces modulo field order
         let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
