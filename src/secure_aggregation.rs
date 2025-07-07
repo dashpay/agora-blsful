@@ -17,9 +17,23 @@ use sha2::{Digest, Sha256};
 /// NOTE: This uses raw modular reduction without domain separation tags (DST)
 /// to maintain exact compatibility with the C++ implementation. The C++ code
 /// performs: bn_read_bin(hash) followed by bn_mod_basic(result, field_order)
+#[allow(dead_code)]
 fn hash_public_keys<C: BlsSignatureImpl>(
     public_keys: &[PublicKey<C>],
 ) -> BlsResult<Vec<<<C as Pairing>::PublicKey as Group>::Scalar>> {
+    let (_, coefficients) = hash_public_keys_with_sorted(public_keys)?;
+    Ok(coefficients)
+}
+
+/// Generate deterministic coefficients and return sorted keys for secure aggregation
+///
+/// Returns a tuple of (sorted_keys, coefficients) to avoid redundant sorting in callers
+fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
+    public_keys: &[PublicKey<C>],
+) -> BlsResult<(
+    Vec<PublicKey<C>>,
+    Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
+)> {
     // Sort public keys by serialized bytes
     let mut sorted_keys = public_keys.to_vec();
     sorted_keys.sort_by(|a, b| a.0.to_bytes().as_ref().cmp(b.0.to_bytes().as_ref()));
@@ -88,7 +102,7 @@ fn hash_public_keys<C: BlsSignatureImpl>(
         coefficients.push(scalar);
     }
 
-    Ok(coefficients)
+    Ok((sorted_keys, coefficients))
 }
 
 /// Aggregate signatures using secure aggregation (prevents rogue key attacks)
@@ -106,21 +120,24 @@ pub fn aggregate_secure<C: BlsSignatureImpl>(
         return Ok(<C as Pairing>::Signature::identity());
     }
 
-    // Generate coefficients
-    let coefficients = hash_public_keys(public_keys)?;
+    // Generate coefficients and get sorted keys
+    let (sorted_keys, coefficients) = hash_public_keys_with_sorted(public_keys)?;
 
-    // Sort keys and signatures together by public key order
-    let mut paired: Vec<(PublicKey<C>, <C as Pairing>::Signature)> = public_keys
-        .iter()
-        .copied()
-        .zip(signatures.iter().copied())
-        .collect();
-    paired.sort_by(|a, b| a.0 .0.to_bytes().as_ref().cmp(b.0 .0.to_bytes().as_ref()));
+    // Create index mapping from original to sorted order
+    let mut sorted_indices = Vec::with_capacity(sorted_keys.len());
+    for sorted_key in &sorted_keys {
+        let sorted_bytes = sorted_key.0.to_bytes();
+        let idx = public_keys
+            .iter()
+            .position(|k| k.0.to_bytes().as_ref() == sorted_bytes.as_ref())
+            .ok_or_else(|| BlsError::InvalidInputs("Key mismatch".to_string()))?;
+        sorted_indices.push(idx);
+    }
 
     // Aggregate signatures with coefficients: sig_agg = Σ(sig[i] * t[i])
     let mut aggregated_sig = <C as Pairing>::Signature::identity();
-    for (i, (_, sig)) in paired.iter().enumerate() {
-        aggregated_sig += *sig * coefficients[i];
+    for (i, idx) in sorted_indices.iter().enumerate() {
+        aggregated_sig += signatures[*idx] * coefficients[i];
     }
 
     Ok(aggregated_sig)
@@ -142,12 +159,8 @@ fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
         };
     }
 
-    // Generate coefficients
-    let coefficients = hash_public_keys(public_keys)?;
-
-    // Sort public keys same way as in hash_public_keys
-    let mut sorted_keys = public_keys.to_vec();
-    sorted_keys.sort_by(|a, b| a.0.to_bytes().as_ref().cmp(b.0.to_bytes().as_ref()));
+    // Generate coefficients and get sorted keys
+    let (sorted_keys, coefficients) = hash_public_keys_with_sorted(public_keys)?;
 
     // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
     let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
