@@ -126,20 +126,20 @@ impl<C: BlsSignatureImpl> AggregateSignature<C> {
     pub fn from_signatures<B: AsRef<[Signature<C>]>>(signatures: B) -> BlsResult<Self> {
         Self::try_from(signatures.as_ref())
     }
-    
+
     /// Accumulate signatures using secure aggregation (prevents rogue key attacks)
-    /// 
+    ///
     /// This method should be used when aggregating signatures from multiple signers
     /// for the same message. It applies deterministic coefficients to each signature
     /// to prevent rogue public key attacks.
-    /// 
+    ///
     /// # Arguments
     /// * `signatures` - The signatures to aggregate (must all be for the same message)
     /// * `public_keys` - The public keys corresponding to each signature
-    /// 
+    ///
     /// # Returns
     /// An aggregated signature that can be verified with `verify_secure`
-    /// 
+    ///
     /// # Errors
     /// * `InvalidInputs` if array lengths don't match or are empty
     /// * `InvalidSignatureScheme` if signatures use different schemes
@@ -148,29 +148,31 @@ impl<C: BlsSignatureImpl> AggregateSignature<C> {
         public_keys: &[PublicKey<C>],
     ) -> BlsResult<Self> {
         let sigs = signatures.as_ref();
-        
+
         if sigs.len() != public_keys.len() {
-            return Err(BlsError::InvalidInputs("Mismatched array lengths".to_string()));
+            return Err(BlsError::InvalidInputs(
+                "Mismatched array lengths".to_string(),
+            ));
         }
-        
+
         if sigs.is_empty() {
-            return Err(BlsError::InvalidInputs("Empty signatures array".to_string()));
+            return Err(BlsError::InvalidInputs(
+                "Empty signatures array".to_string(),
+            ));
         }
-        
+
         // Check all signatures use the same scheme
         if !sigs.iter().skip(1).all(|s| s.same_scheme(&sigs[0])) {
             return Err(BlsError::InvalidSignatureScheme);
         }
-        
+
         // Extract raw signatures
-        let raw_sigs: Vec<<C as Pairing>::Signature> = sigs
-            .iter()
-            .map(|s| *s.as_raw_value())
-            .collect();
-        
+        let raw_sigs: Vec<<C as Pairing>::Signature> =
+            sigs.iter().map(|s| *s.as_raw_value()).collect();
+
         // Use secure aggregation
         let agg_sig = secure_aggregation::aggregate_secure::<C>(public_keys, &raw_sigs)?;
-        
+
         // Wrap in appropriate scheme
         match sigs[0] {
             Signature::Basic(_) => Ok(Self::Basic(agg_sig)),
