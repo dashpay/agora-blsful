@@ -171,7 +171,7 @@ impl<C: BlsSignatureImpl> AggregateSignature<C> {
             sigs.iter().map(|s| *s.as_raw_value()).collect();
 
         // Use secure aggregation
-        let agg_sig = secure_aggregation::aggregate_secure::<C>(public_keys, &raw_sigs)?;
+        let agg_sig = aggregate_secure::<C>(public_keys, &raw_sigs)?;
 
         // Wrap in appropriate scheme
         match sigs[0] {

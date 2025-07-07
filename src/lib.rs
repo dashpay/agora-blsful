@@ -37,7 +37,7 @@ mod public_key;
 mod public_key_share;
 mod secret_key;
 mod secret_key_share;
-mod secure_aggregation;
+pub mod secure_aggregation;
 mod sig_types;
 mod sign_crypt_ciphertext;
 mod sign_decryption_share;
@@ -69,6 +69,15 @@ pub use signature::*;
 pub use signature_share::*;
 pub use time_crypt_ciphertext::*;
 pub use traits::*;
+
+// Re-export commonly used functions from secure_aggregation
+pub use secure_aggregation::{
+    aggregate_secure,
+    aggregate_secure_with_mode,
+    verify_secure_basic_with_mode,
+    verify_secure_message_augmentation_with_mode,
+    verify_secure_pop_with_mode,
+};
 
 pub use vsss_rs;
 

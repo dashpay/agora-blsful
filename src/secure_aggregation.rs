@@ -204,6 +204,241 @@ pub fn verify_secure_pop<C: BlsSignatureImpl, B: AsRef<[u8]>>(
     verify_secure_with_dst::<C, B>(public_keys, signature, msg, <C as BlsSignaturePop>::SIG_DST)
 }
 
+// Legacy-aware secure aggregation functions
+
+/// Generate deterministic coefficients with legacy serialization support
+fn hash_public_keys_with_mode<C: BlsSignatureImpl>(
+    public_keys: &[PublicKey<C>],
+    legacy: bool,
+) -> BlsResult<Vec<<<C as Pairing>::PublicKey as Group>::Scalar>>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    // Sort public keys by serialized bytes using the specified mode
+    let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
+        .iter()
+        .map(|pk| (pk.to_bytes_with_mode(legacy), pk))
+        .collect();
+    sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Hash all sorted public keys
+    let mut hasher = Sha256::new();
+    for (pk_bytes, _) in &sorted_pairs {
+        hasher.update(pk_bytes);
+    }
+    let base_hash: [u8; 32] = hasher.finalize().into();
+
+    // Generate coefficients
+    let mut coefficients = Vec::with_capacity(sorted_pairs.len());
+
+    for i in 0..sorted_pairs.len() {
+        // Create buffer: [4-byte BE index][32-byte hash]
+        let mut hasher = Sha256::new();
+        hasher.update((i as u32).to_be_bytes());
+        hasher.update(base_hash);
+        let hash: [u8; 32] = hasher.finalize().into();
+
+        // Convert to scalar using raw modular reduction (matching C++)
+        let mut repr =
+            <<<C as Pairing>::PublicKey as Group>::Scalar as PrimeField>::Repr::default();
+        let repr_bytes = repr.as_mut();
+
+        if repr_bytes.len() >= 32 {
+            let offset = repr_bytes.len() - 32;
+            repr_bytes[offset..].copy_from_slice(&hash);
+            for byte in &mut repr_bytes[..offset] {
+                *byte = 0;
+            }
+        } else {
+            return Err(BlsError::InvalidInputs(
+                "Field representation too small".to_string(),
+            ));
+        }
+
+        #[cfg(target_endian = "little")]
+        repr_bytes.reverse();
+
+        let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
+            .into_option()
+            .ok_or_else(|| {
+                BlsError::InvalidInputs("Failed to create scalar from hash".to_string())
+            })?;
+
+        if scalar.is_zero().into() {
+            return Err(BlsError::InvalidCoefficient);
+        }
+
+        coefficients.push(scalar);
+    }
+
+    Ok(coefficients)
+}
+
+/// Aggregate signatures using secure aggregation with legacy support
+pub fn aggregate_secure_with_mode<C: BlsSignatureImpl>(
+    public_keys: &[PublicKey<C>],
+    signatures: &[<C as Pairing>::Signature],
+    legacy: bool,
+) -> BlsResult<<C as Pairing>::Signature>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    if public_keys.len() != signatures.len() {
+        return Err(BlsError::InvalidInputs(
+            "Number of public keys must match number of signatures".to_string(),
+        ));
+    }
+
+    if public_keys.is_empty() {
+        return Err(BlsError::InvalidInputs(
+            "Cannot aggregate zero signatures".to_string(),
+        ));
+    }
+
+    // Get coefficients using legacy-aware hashing
+    let coefficients = hash_public_keys_with_mode::<C>(public_keys, legacy)?;
+
+    // Sort public keys and signatures together using legacy-aware serialization
+    let mut pairs: Vec<(Vec<u8>, &PublicKey<C>, &<C as Pairing>::Signature)> = public_keys
+        .iter()
+        .zip(signatures.iter())
+        .map(|(pk, sig)| (pk.to_bytes_with_mode(legacy), pk, sig))
+        .collect();
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Apply coefficients and aggregate
+    let mut result = <C as Pairing>::Signature::identity();
+    for (i, (_, _, sig)) in pairs.iter().enumerate() {
+        let weighted_sig = **sig * coefficients[i];
+        result += weighted_sig;
+    }
+
+    Ok(result)
+}
+
+/// Verify secure aggregation for Basic scheme with legacy support
+pub fn verify_secure_basic_with_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    legacy: bool,
+) -> BlsResult<()>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    if public_keys.is_empty() {
+        return Err(BlsError::InvalidInputs(
+            "Cannot verify with zero public keys".to_string(),
+        ));
+    }
+
+    // Get coefficients using legacy-aware hashing
+    let coefficients = hash_public_keys_with_mode::<C>(public_keys, legacy)?;
+
+    // Sort public keys using legacy-aware serialization
+    let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
+        .iter()
+        .map(|pk| (pk.to_bytes_with_mode(legacy), pk))
+        .collect();
+    sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs
+        .iter()
+        .map(|(_, pk)| **pk)
+        .collect();
+
+    // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
+    let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
+    for (pk, coeff) in public_keys_sorted.iter().zip(coefficients.iter()) {
+        aggregated_pk += pk.0 * *coeff;
+    }
+
+    // Perform standard verification
+    <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), <C as BlsSignatureBasic>::DST)
+}
+
+/// Verify secure aggregation for MessageAugmentation scheme with legacy support
+pub fn verify_secure_message_augmentation_with_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    legacy: bool,
+) -> BlsResult<()>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    if public_keys.is_empty() {
+        return Err(BlsError::InvalidInputs(
+            "Cannot verify with zero public keys".to_string(),
+        ));
+    }
+
+    // Get coefficients using legacy-aware hashing
+    let coefficients = hash_public_keys_with_mode::<C>(public_keys, legacy)?;
+
+    // Sort public keys using legacy-aware serialization
+    let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
+        .iter()
+        .map(|pk| (pk.to_bytes_with_mode(legacy), pk))
+        .collect();
+    sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs
+        .iter()
+        .map(|(_, pk)| **pk)
+        .collect();
+
+    // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
+    let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
+    for (pk, coeff) in public_keys_sorted.iter().zip(coefficients.iter()) {
+        aggregated_pk += pk.0 * *coeff;
+    }
+
+    // Perform standard verification
+    <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), <C as BlsSignatureMessageAugmentation>::DST)
+}
+
+/// Verify secure aggregation for ProofOfPossession scheme with legacy support
+pub fn verify_secure_pop_with_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    legacy: bool,
+) -> BlsResult<()>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    if public_keys.is_empty() {
+        return Err(BlsError::InvalidInputs(
+            "Cannot verify with zero public keys".to_string(),
+        ));
+    }
+
+    // Get coefficients using legacy-aware hashing
+    let coefficients = hash_public_keys_with_mode::<C>(public_keys, legacy)?;
+
+    // Sort public keys using legacy-aware serialization
+    let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
+        .iter()
+        .map(|pk| (pk.to_bytes_with_mode(legacy), pk))
+        .collect();
+    sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let public_keys_sorted: Vec<PublicKey<C>> = sorted_pairs
+        .iter()
+        .map(|(_, pk)| **pk)
+        .collect();
+
+    // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
+    let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
+    for (pk, coeff) in public_keys_sorted.iter().zip(coefficients.iter()) {
+        aggregated_pk += pk.0 * *coeff;
+    }
+
+    // Perform standard verification
+    <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), <C as BlsSignaturePop>::SIG_DST)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

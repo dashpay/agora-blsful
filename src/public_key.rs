@@ -133,3 +133,84 @@ impl<C: BlsSignatureImpl> PublicKey<C> {
         <C as BlsSignatureCore>::core_combine_public_key_shares(&points).map(Self)
     }
 }
+
+// Legacy serialization support
+impl<C: BlsSignatureImpl> PublicKey<C> 
+where
+    C::PublicKey: LegacyG1Point,
+{
+    /// Serialize with legacy format support
+    /// 
+    /// # Arguments
+    /// * `legacy` - If true, uses legacy format; if false, uses modern format
+    pub fn to_bytes_with_mode(&self, legacy: bool) -> Vec<u8> {
+        if legacy {
+            self.0.serialize_g1(true).to_vec()
+        } else {
+            self.to_bytes()
+        }
+    }
+    
+    /// Deserialize with legacy format support
+    /// 
+    /// # Arguments
+    /// * `bytes` - The bytes to deserialize
+    /// * `legacy` - If true, expects legacy format; if false, expects modern format
+    pub fn from_bytes_with_mode(bytes: &[u8], legacy: bool) -> BlsResult<Self> {
+        if bytes.len() != 48 {
+            return Err(BlsError::InvalidLength {
+                expected: 48,
+                actual: bytes.len(),
+            });
+        }
+        
+        let mut array = [0u8; 48];
+        array.copy_from_slice(bytes);
+        
+        let point = C::PublicKey::deserialize_g1(&array, legacy)?;
+        Ok(Self(point))
+    }
+    
+    /// Try to deserialize from either format automatically
+    /// 
+    /// First tries modern format, then falls back to legacy format
+    pub fn from_bytes_auto(bytes: &[u8]) -> BlsResult<Self> {
+        // Check format hints first
+        let format = Self::detect_format(bytes);
+        
+        match format {
+            SerializationFormat::Legacy => {
+                // Definitely legacy format
+                Self::from_bytes_with_mode(bytes, true)
+            }
+            SerializationFormat::Either => {
+                // Infinity point - works with either format
+                Self::from_bytes_with_mode(bytes, false)
+            }
+            _ => {
+                // Try modern format first (current default)
+                if let Ok(pk) = Self::from_bytes_with_mode(bytes, false) {
+                    return Ok(pk);
+                }
+                
+                // Fall back to legacy format
+                Self::from_bytes_with_mode(bytes, true)
+            }
+        }
+    }
+    
+    /// Detect the serialization format of the given bytes
+    pub fn detect_format(bytes: &[u8]) -> SerializationFormat {
+        if bytes.len() < 48 {
+            return SerializationFormat::Unknown;
+        }
+        SerializationFormat::detect_g1(bytes)
+    }
+}
+
+impl<C: BlsSignatureImpl> PublicKey<C> {
+    /// Get the raw bytes of the public key (modern format)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.to_bytes().as_ref().to_vec()
+    }
+}
