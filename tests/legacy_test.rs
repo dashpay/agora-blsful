@@ -9,13 +9,13 @@ fn test_g1_legacy_serialization_roundtrip() {
     let pk1 = sk1.public_key();
 
     // Test modern format roundtrip
-    let modern_bytes = pk1.to_bytes_with_mode(false);
-    let pk1_modern = PublicKey::from_bytes_with_mode(&modern_bytes, false).unwrap();
+    let modern_bytes = pk1.to_bytes_with_mode(SerializationFormat::Modern);
+    let pk1_modern = PublicKey::from_bytes_with_mode(&modern_bytes, SerializationFormat::Modern).unwrap();
     assert_eq!(pk1, pk1_modern);
 
     // Test legacy format roundtrip
-    let legacy_bytes = pk1.to_bytes_with_mode(true);
-    let pk1_legacy = PublicKey::from_bytes_with_mode(&legacy_bytes, true).unwrap();
+    let legacy_bytes = pk1.to_bytes_with_mode(SerializationFormat::Legacy);
+    let pk1_legacy = PublicKey::from_bytes_with_mode(&legacy_bytes, SerializationFormat::Legacy).unwrap();
     assert_eq!(pk1, pk1_legacy);
 
     // Verify formats are different
@@ -26,8 +26,8 @@ fn test_g1_legacy_serialization_roundtrip() {
 fn test_g1_infinity_point_same_format() {
     let infinity = PublicKey::<Bls12381G2Impl>::default();
 
-    let modern_bytes = infinity.to_bytes_with_mode(false);
-    let legacy_bytes = infinity.to_bytes_with_mode(true);
+    let modern_bytes = infinity.to_bytes_with_mode(SerializationFormat::Modern);
+    let legacy_bytes = infinity.to_bytes_with_mode(SerializationFormat::Legacy);
 
     // Infinity should be the same in both formats (0xc0 followed by zeros)
     assert_eq!(modern_bytes, legacy_bytes);
@@ -41,11 +41,11 @@ fn test_g2_legacy_serialization_roundtrip() {
     let sig = sk.sign(SignatureSchemes::Basic, msg).unwrap();
 
     // Test modern format roundtrip
-    let modern_bytes = sig.to_bytes_with_mode(false);
+    let modern_bytes = sig.to_bytes_with_mode(SerializationFormat::Modern);
     let sig_modern = Signature::<Bls12381G2Impl>::from_bytes_with_mode(
         &modern_bytes,
         SignatureSchemes::Basic,
-        false,
+        SerializationFormat::Modern,
     )
     .unwrap();
     // Compare actual signature values, not projective coordinates
@@ -53,11 +53,11 @@ fn test_g2_legacy_serialization_roundtrip() {
     assert!(sig_modern.verify(&sk.public_key(), msg).is_ok());
 
     // Test legacy format roundtrip
-    let legacy_bytes = sig.to_bytes_with_mode(true);
+    let legacy_bytes = sig.to_bytes_with_mode(SerializationFormat::Legacy);
     let sig_legacy = Signature::<Bls12381G2Impl>::from_bytes_with_mode(
         &legacy_bytes,
         SignatureSchemes::Basic,
-        true,
+        SerializationFormat::Legacy,
     )
     .unwrap();
     // Compare actual signature values, not projective coordinates
@@ -73,10 +73,10 @@ fn test_cross_format_deserialization_fails() {
     let pk = sk.public_key();
 
     // Serialize in modern format
-    let modern_bytes = pk.to_bytes_with_mode(false);
+    let modern_bytes = pk.to_bytes_with_mode(SerializationFormat::Modern);
 
     // Try to deserialize as legacy - should fail because formats are incompatible
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&modern_bytes, true);
+    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&modern_bytes, SerializationFormat::Legacy);
     assert!(
         result.is_err(),
         "Modern bytes should not deserialize with legacy mode"
@@ -88,12 +88,12 @@ fn test_cross_format_deserialization_fails() {
     for i in 0..100 {
         let test_sk = SecretKey::<Bls12381G2Impl>::from_hash(&[i as u8; 32]);
         let test_pk = test_sk.public_key();
-        let test_legacy = test_pk.to_bytes_with_mode(true);
+        let test_legacy = test_pk.to_bytes_with_mode(SerializationFormat::Legacy);
 
         if (test_legacy[0] & 0x80) == 0 {
             // Found a key with Y=0 in legacy format
             // This should definitely fail modern deserialization
-            let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&test_legacy, false);
+            let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&test_legacy, SerializationFormat::Modern);
             assert!(
                 result.is_err(),
                 "Legacy Y=0 bytes should not deserialize with modern mode"
@@ -135,7 +135,7 @@ fn test_verify_secure_legacy_compatibility() {
     let agg_sig_legacy = aggregate_secure_with_mode::<Bls12381G2Impl>(
         &[pk1, pk2, pk3],
         &raw_sigs,
-        true, // legacy mode
+        SerializationFormat::Legacy,
     )
     .unwrap();
 
@@ -143,7 +143,7 @@ fn test_verify_secure_legacy_compatibility() {
     let agg_sig_modern = aggregate_secure_with_mode::<Bls12381G2Impl>(
         &[pk1, pk2, pk3],
         &raw_sigs,
-        false, // modern mode
+        SerializationFormat::Modern,
     )
     .unwrap();
 
@@ -153,20 +153,20 @@ fn test_verify_secure_legacy_compatibility() {
 
     // Verify that legacy aggregated signature verifies with legacy mode
     assert!(sig_legacy
-        .verify_secure_with_mode(&[pk1, pk2, pk3], msg, true)
+        .verify_secure_with_mode(&[pk1, pk2, pk3], msg, SerializationFormat::Legacy)
         .is_ok());
 
     // Verify that modern aggregated signature verifies with modern mode
     assert!(sig_modern
-        .verify_secure_with_mode(&[pk1, pk2, pk3], msg, false)
+        .verify_secure_with_mode(&[pk1, pk2, pk3], msg, SerializationFormat::Modern)
         .is_ok());
 
     // Cross-mode verification should fail
     assert!(sig_legacy
-        .verify_secure_with_mode(&[pk1, pk2, pk3], msg, false)
+        .verify_secure_with_mode(&[pk1, pk2, pk3], msg, SerializationFormat::Modern)
         .is_err());
     assert!(sig_modern
-        .verify_secure_with_mode(&[pk1, pk2, pk3], msg, true)
+        .verify_secure_with_mode(&[pk1, pk2, pk3], msg, SerializationFormat::Legacy)
         .is_err());
 }
 
@@ -190,10 +190,10 @@ fn test_legacy_coefficient_generation_differs() {
 
     // Aggregate with different modes
     let agg_legacy =
-        aggregate_secure_with_mode::<Bls12381G2Impl>(&[pk1, pk2], &raw_sigs, true).unwrap();
+        aggregate_secure_with_mode::<Bls12381G2Impl>(&[pk1, pk2], &raw_sigs, SerializationFormat::Legacy).unwrap();
 
     let agg_modern =
-        aggregate_secure_with_mode::<Bls12381G2Impl>(&[pk1, pk2], &raw_sigs, false).unwrap();
+        aggregate_secure_with_mode::<Bls12381G2Impl>(&[pk1, pk2], &raw_sigs, SerializationFormat::Modern).unwrap();
 
     // The aggregated signatures should be different
     assert_ne!(agg_legacy, agg_modern);
@@ -206,8 +206,8 @@ fn test_legacy_bit_patterns() {
     let sk = SecretKey::<Bls12381G2Impl>::from_hash(&[0x42; 32]);
     let pk = sk.public_key();
 
-    let modern_bytes = pk.to_bytes_with_mode(false);
-    let legacy_bytes = pk.to_bytes_with_mode(true);
+    let modern_bytes = pk.to_bytes_with_mode(SerializationFormat::Modern);
+    let legacy_bytes = pk.to_bytes_with_mode(SerializationFormat::Legacy);
 
     eprintln!("Modern first byte: 0x{:02x}", modern_bytes[0]);
     eprintln!("Legacy first byte: 0x{:02x}", legacy_bytes[0]);
@@ -227,15 +227,15 @@ fn test_error_messages() {
     // Test that error messages are helpful
     let invalid_g1 = vec![0xFF; 48]; // Invalid point
 
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&invalid_g1, false);
+    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&invalid_g1, SerializationFormat::Modern);
     assert!(result.is_err());
 
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&invalid_g1, true);
+    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&invalid_g1, SerializationFormat::Legacy);
     assert!(result.is_err());
 
     // Test invalid length
     let short_bytes = vec![0x00; 47];
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&short_bytes, false);
+    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&short_bytes, SerializationFormat::Modern);
     match result {
         Err(BlsError::InvalidLength { expected, actual }) => {
             assert_eq!(expected, 48);

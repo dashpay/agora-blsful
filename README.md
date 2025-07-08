@@ -99,8 +99,8 @@ let pk_bytes = public_key.to_bytes();
 let pk = PublicKey::try_from(&pk_bytes[..]).unwrap();
 
 // Legacy format
-let pk_legacy_bytes = public_key.to_bytes_with_mode(true);
-let pk = PublicKey::from_bytes_with_mode(&pk_legacy_bytes, true).unwrap();
+let pk_legacy_bytes = public_key.to_bytes_with_mode(SerializationFormat::Legacy);
+let pk = PublicKey::from_bytes_with_mode(&pk_legacy_bytes, SerializationFormat::Legacy).unwrap();
 ```
 
 ### VerifySecure with Legacy Support
@@ -114,10 +114,10 @@ assert!(agg_sig.verify_secure(&public_keys, msg).is_ok());
 
 // Legacy secure aggregation
 let agg_sig = aggregate_secure(&public_keys, &signatures).unwrap();
-assert!(agg_sig.verify_secure_with_mode(&public_keys, msg, true).is_ok());
+assert!(agg_sig.verify_secure_with_mode(&public_keys, msg, SerializationFormat::Legacy).is_ok());
 ```
 
-**Important**: Signatures aggregated with `legacy=true` must be verified with `legacy=true`. Mixing modes will cause verification failures.
+**Important**: Signatures aggregated with `SerializationFormat::Legacy` must be verified with `SerializationFormat::Legacy`. Mixing modes will cause verification failures.
 
 ## License
 

@@ -170,25 +170,24 @@ impl<C: BlsSignatureImpl> Signature<C>
 where
     C::Signature: LegacyG2Point,
 {
-    /// Serialize signature with legacy format support
+    /// Serialize signature with specified serialization format
     ///
     /// # Arguments
-    /// * `legacy` - If true, uses legacy format; if false, uses modern format
-    pub fn to_bytes_with_mode(&self, legacy: bool) -> Vec<u8> {
-        if legacy {
-            self.as_raw_value().serialize_g2(true).to_vec()
-        } else {
-            self.as_raw_value().to_bytes().as_ref().to_vec()
+    /// * `format` - The serialization format to use
+    pub fn to_bytes_with_mode(&self, format: SerializationFormat) -> Vec<u8> {
+        match format {
+            SerializationFormat::Legacy => self.as_raw_value().serialize_g2(format).to_vec(),
+            SerializationFormat::Modern => self.as_raw_value().to_bytes().as_ref().to_vec(),
         }
     }
 
-    /// Deserialize signature with legacy format support
+    /// Deserialize signature with specified serialization format
     ///
     /// This method requires knowing which signature scheme was used
     pub fn from_bytes_with_mode(
         bytes: &[u8],
         scheme: SignatureSchemes,
-        legacy: bool,
+        format: SerializationFormat,
     ) -> BlsResult<Self> {
         if bytes.len() != 96 {
             return Err(BlsError::InvalidLength {
@@ -200,7 +199,7 @@ where
         let mut array = [0u8; 96];
         array.copy_from_slice(bytes);
 
-        let point = C::Signature::deserialize_g2(&array, legacy)?;
+        let point = C::Signature::deserialize_g2(&array, format)?;
 
         match scheme {
             SignatureSchemes::Basic => Ok(Self::Basic(point)),
@@ -215,20 +214,20 @@ where
         &self,
         public_keys: &[PublicKey<C>],
         msg: B,
-        legacy: bool,
+        format: SerializationFormat,
     ) -> BlsResult<()>
     where
         C::PublicKey: LegacyG1Point,
     {
         match self {
             Self::Basic(sig) => {
-                verify_secure_basic_with_mode::<C, B>(public_keys, *sig, msg, legacy)
+                verify_secure_basic_with_mode::<C, B>(public_keys, *sig, msg, format)
             }
             Self::MessageAugmentation(sig) => {
-                verify_secure_message_augmentation_with_mode::<C, B>(public_keys, *sig, msg, legacy)
+                verify_secure_message_augmentation_with_mode::<C, B>(public_keys, *sig, msg, format)
             }
             Self::ProofOfPossession(sig) => {
-                verify_secure_pop_with_mode::<C, B>(public_keys, *sig, msg, legacy)
+                verify_secure_pop_with_mode::<C, B>(public_keys, *sig, msg, format)
             }
         }
     }

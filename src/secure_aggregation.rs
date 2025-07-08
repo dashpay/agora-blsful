@@ -209,7 +209,7 @@ pub fn verify_secure_pop<C: BlsSignatureImpl, B: AsRef<[u8]>>(
 /// Generate deterministic coefficients with legacy serialization support
 fn hash_public_keys_with_mode<C: BlsSignatureImpl>(
     public_keys: &[PublicKey<C>],
-    legacy: bool,
+    format: SerializationFormat,
 ) -> BlsResult<Vec<<<C as Pairing>::PublicKey as Group>::Scalar>>
 where
     C::PublicKey: LegacyG1Point,
@@ -217,7 +217,7 @@ where
     // Sort public keys by serialized bytes using the specified mode
     let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
         .iter()
-        .map(|pk| (pk.to_bytes_with_mode(legacy), pk))
+        .map(|pk| (pk.to_bytes_with_mode(format), pk))
         .collect();
     sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -278,7 +278,7 @@ where
 pub fn aggregate_secure_with_mode<C: BlsSignatureImpl>(
     public_keys: &[PublicKey<C>],
     signatures: &[<C as Pairing>::Signature],
-    legacy: bool,
+    format: SerializationFormat,
 ) -> BlsResult<<C as Pairing>::Signature>
 where
     C::PublicKey: LegacyG1Point,
@@ -294,13 +294,13 @@ where
     }
 
     // Get coefficients using legacy-aware hashing
-    let coefficients = hash_public_keys_with_mode::<C>(public_keys, legacy)?;
+    let coefficients = hash_public_keys_with_mode::<C>(public_keys, format)?;
 
     // Sort public keys and signatures together using legacy-aware serialization
     let mut pairs: Vec<(Vec<u8>, &PublicKey<C>, &<C as Pairing>::Signature)> = public_keys
         .iter()
         .zip(signatures.iter())
-        .map(|(pk, sig)| (pk.to_bytes_with_mode(legacy), pk, sig))
+        .map(|(pk, sig)| (pk.to_bytes_with_mode(format), pk, sig))
         .collect();
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -319,7 +319,7 @@ pub fn verify_secure_basic_with_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
     public_keys: &[PublicKey<C>],
     signature: <C as Pairing>::Signature,
     msg: B,
-    legacy: bool,
+    format: SerializationFormat,
 ) -> BlsResult<()>
 where
     C::PublicKey: LegacyG1Point,
@@ -333,12 +333,12 @@ where
     }
 
     // Get coefficients using legacy-aware hashing
-    let coefficients = hash_public_keys_with_mode::<C>(public_keys, legacy)?;
+    let coefficients = hash_public_keys_with_mode::<C>(public_keys, format)?;
 
     // Sort public keys using legacy-aware serialization
     let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
         .iter()
-        .map(|pk| (pk.to_bytes_with_mode(legacy), pk))
+        .map(|pk| (pk.to_bytes_with_mode(format), pk))
         .collect();
     sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -364,7 +364,7 @@ pub fn verify_secure_message_augmentation_with_mode<C: BlsSignatureImpl, B: AsRe
     public_keys: &[PublicKey<C>],
     signature: <C as Pairing>::Signature,
     msg: B,
-    legacy: bool,
+    format: SerializationFormat,
 ) -> BlsResult<()>
 where
     C::PublicKey: LegacyG1Point,
@@ -378,12 +378,12 @@ where
     }
 
     // Get coefficients using legacy-aware hashing
-    let coefficients = hash_public_keys_with_mode::<C>(public_keys, legacy)?;
+    let coefficients = hash_public_keys_with_mode::<C>(public_keys, format)?;
 
     // Sort public keys using legacy-aware serialization
     let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
         .iter()
-        .map(|pk| (pk.to_bytes_with_mode(legacy), pk))
+        .map(|pk| (pk.to_bytes_with_mode(format), pk))
         .collect();
     sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -409,7 +409,7 @@ pub fn verify_secure_pop_with_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
     public_keys: &[PublicKey<C>],
     signature: <C as Pairing>::Signature,
     msg: B,
-    legacy: bool,
+    format: SerializationFormat,
 ) -> BlsResult<()>
 where
     C::PublicKey: LegacyG1Point,
@@ -423,12 +423,12 @@ where
     }
 
     // Get coefficients using legacy-aware hashing
-    let coefficients = hash_public_keys_with_mode::<C>(public_keys, legacy)?;
+    let coefficients = hash_public_keys_with_mode::<C>(public_keys, format)?;
 
     // Sort public keys using legacy-aware serialization
     let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
         .iter()
-        .map(|pk| (pk.to_bytes_with_mode(legacy), pk))
+        .map(|pk| (pk.to_bytes_with_mode(format), pk))
         .collect();
     sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
 

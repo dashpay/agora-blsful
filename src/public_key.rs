@@ -139,24 +139,23 @@ impl<C: BlsSignatureImpl> PublicKey<C>
 where
     C::PublicKey: LegacyG1Point,
 {
-    /// Serialize with legacy format support
+    /// Serialize with specified serialization format
     ///
     /// # Arguments
-    /// * `legacy` - If true, uses legacy format; if false, uses modern format
-    pub fn to_bytes_with_mode(&self, legacy: bool) -> Vec<u8> {
-        if legacy {
-            self.0.serialize_g1(true).to_vec()
-        } else {
-            self.to_bytes()
+    /// * `format` - The serialization format to use
+    pub fn to_bytes_with_mode(&self, format: SerializationFormat) -> Vec<u8> {
+        match format {
+            SerializationFormat::Legacy => self.0.serialize_g1(format).to_vec(),
+            SerializationFormat::Modern => self.to_bytes(),
         }
     }
 
-    /// Deserialize with legacy format support
+    /// Deserialize with specified serialization format
     ///
     /// # Arguments
     /// * `bytes` - The bytes to deserialize
-    /// * `legacy` - If true, expects legacy format; if false, expects modern format
-    pub fn from_bytes_with_mode(bytes: &[u8], legacy: bool) -> BlsResult<Self> {
+    /// * `format` - The expected serialization format
+    pub fn from_bytes_with_mode(bytes: &[u8], format: SerializationFormat) -> BlsResult<Self> {
         if bytes.len() != 48 {
             return Err(BlsError::InvalidLength {
                 expected: 48,
@@ -167,7 +166,7 @@ where
         let mut array = [0u8; 48];
         array.copy_from_slice(bytes);
 
-        let point = C::PublicKey::deserialize_g1(&array, legacy)?;
+        let point = C::PublicKey::deserialize_g1(&array, format)?;
         Ok(Self(point))
     }
 
