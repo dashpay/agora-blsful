@@ -108,11 +108,18 @@ fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
     Ok((sorted_keys, coefficients))
 }
 
-/// Aggregate signatures using secure aggregation (prevents rogue key attacks)
-pub fn aggregate_secure<C: BlsSignatureImpl>(
+/// Internal implementation of secure aggregation with customizable serialization
+#[inline]
+fn aggregate_secure_internal<C: BlsSignatureImpl, F, H>(
     public_keys: &[PublicKey<C>],
     signatures: &[<C as Pairing>::Signature],
-) -> BlsResult<<C as Pairing>::Signature> {
+    serialize_fn: F,
+    hash_fn: H,
+) -> BlsResult<<C as Pairing>::Signature>
+where
+    F: Fn(&PublicKey<C>) -> Vec<u8>,
+    H: FnOnce(&[PublicKey<C>]) -> BlsResult<(Vec<PublicKey<C>>, Vec<<<C as Pairing>::PublicKey as Group>::Scalar>)>,
+{
     if public_keys.len() != signatures.len() {
         return Err(BlsError::InvalidInputs(
             "Mismatched array lengths".to_string(),
@@ -124,15 +131,15 @@ pub fn aggregate_secure<C: BlsSignatureImpl>(
     }
 
     // Generate coefficients and get sorted keys
-    let (sorted_keys, coefficients) = hash_public_keys_with_sorted(public_keys)?;
+    let (sorted_keys, coefficients) = hash_fn(public_keys)?;
 
     // Create index mapping from original to sorted order
     let mut sorted_indices = Vec::with_capacity(sorted_keys.len());
     for sorted_key in &sorted_keys {
-        let sorted_bytes = sorted_key.0.to_bytes();
+        let sorted_bytes = serialize_fn(sorted_key);
         let idx = public_keys
             .iter()
-            .position(|k| k.0.to_bytes().as_ref() == sorted_bytes.as_ref())
+            .position(|k| serialize_fn(k) == sorted_bytes)
             .ok_or_else(|| BlsError::InvalidInputs("Key mismatch".to_string()))?;
         sorted_indices.push(idx);
     }
@@ -146,13 +153,31 @@ pub fn aggregate_secure<C: BlsSignatureImpl>(
     Ok(aggregated_sig)
 }
 
-/// Internal verify using secure aggregation with specified DST
-fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+/// Aggregate signatures using secure aggregation (prevents rogue key attacks)
+pub fn aggregate_secure<C: BlsSignatureImpl>(
+    public_keys: &[PublicKey<C>],
+    signatures: &[<C as Pairing>::Signature],
+) -> BlsResult<<C as Pairing>::Signature> {
+    aggregate_secure_internal(
+        public_keys,
+        signatures,
+        |pk| pk.0.to_bytes().as_ref().to_vec(),
+        hash_public_keys_with_sorted,
+    )
+}
+
+/// Internal implementation of verify_secure with customizable hashing
+#[inline]
+fn verify_secure_with_dst_internal<C: BlsSignatureImpl, B: AsRef<[u8]>, H>(
     public_keys: &[PublicKey<C>],
     signature: <C as Pairing>::Signature,
     msg: B,
     dst: &'static [u8],
-) -> BlsResult<()> {
+    hash_fn: H,
+) -> BlsResult<()>
+where
+    H: FnOnce(&[PublicKey<C>]) -> BlsResult<(Vec<PublicKey<C>>, Vec<<<C as Pairing>::PublicKey as Group>::Scalar>)>,
+{
     // Handle empty case
     if public_keys.is_empty() {
         return if signature.is_identity().into() {
@@ -163,7 +188,7 @@ fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
     }
 
     // Generate coefficients and get sorted keys
-    let (sorted_keys, coefficients) = hash_public_keys_with_sorted(public_keys)?;
+    let (sorted_keys, coefficients) = hash_fn(public_keys)?;
 
     // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
     let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
@@ -173,6 +198,22 @@ fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
 
     // Perform standard verification
     <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), dst)
+}
+
+/// Internal verify using secure aggregation with specified DST
+fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    dst: &'static [u8],
+) -> BlsResult<()> {
+    verify_secure_with_dst_internal(
+        public_keys,
+        signature,
+        msg,
+        dst,
+        hash_public_keys_with_sorted,
+    )
 }
 
 /// Verify using secure aggregation for Basic scheme
@@ -298,37 +339,12 @@ pub fn aggregate_secure_with_mode<C: BlsSignatureImpl>(
 where
     C::PublicKey: LegacyG1Point,
 {
-    if public_keys.len() != signatures.len() {
-        return Err(BlsError::InvalidInputs(
-            "Number of public keys must match number of signatures".to_string(),
-        ));
-    }
-
-    if public_keys.is_empty() {
-        return Ok(<C as Pairing>::Signature::identity());
-    }
-
-    // Get sorted keys and coefficients using legacy-aware hashing
-    let (sorted_keys, coefficients) = hash_public_keys_with_sorted_mode::<C>(public_keys, format)?;
-
-    // Create index mapping from original to sorted order
-    let mut sorted_indices = Vec::with_capacity(sorted_keys.len());
-    for sorted_key in &sorted_keys {
-        let sorted_bytes = sorted_key.to_bytes_with_mode(format);
-        let idx = public_keys
-            .iter()
-            .position(|k| k.to_bytes_with_mode(format) == sorted_bytes)
-            .ok_or_else(|| BlsError::InvalidInputs("Key mismatch".to_string()))?;
-        sorted_indices.push(idx);
-    }
-
-    // Aggregate signatures with coefficients: sig_agg = Σ(sig[i] * t[i])
-    let mut aggregated_sig = <C as Pairing>::Signature::identity();
-    for (i, idx) in sorted_indices.iter().enumerate() {
-        aggregated_sig += signatures[*idx] * coefficients[i];
-    }
-
-    Ok(aggregated_sig)
+    aggregate_secure_internal(
+        public_keys,
+        signatures,
+        |pk| pk.to_bytes_with_mode(format),
+        |keys| hash_public_keys_with_sorted_mode(keys, format),
+    )
 }
 
 /// Internal verify using secure aggregation with specified DST and mode
@@ -342,26 +358,13 @@ fn verify_secure_with_dst_and_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
 where
     C::PublicKey: LegacyG1Point,
 {
-    // Handle empty case
-    if public_keys.is_empty() {
-        return if signature.is_identity().into() {
-            Ok(())
-        } else {
-            Err(BlsError::InvalidSignature)
-        };
-    }
-
-    // Get sorted keys and coefficients using legacy-aware hashing
-    let (sorted_keys, coefficients) = hash_public_keys_with_sorted_mode(public_keys, format)?;
-
-    // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
-    let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
-    for (pk, coeff) in sorted_keys.iter().zip(coefficients.iter()) {
-        aggregated_pk += pk.0 * *coeff;
-    }
-
-    // Perform standard verification
-    <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), dst)
+    verify_secure_with_dst_internal(
+        public_keys,
+        signature,
+        msg,
+        dst,
+        |keys| hash_public_keys_with_sorted_mode(keys, format),
+    )
 }
 
 /// Verify secure aggregation for Basic scheme with legacy support
