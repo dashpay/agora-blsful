@@ -5,6 +5,82 @@ use crate::traits::LegacyG1Point;
 use crate::traits::LegacyG2Point;
 use crate::{BlsError, SerializationFormat};
 
+/// Common bit manipulation constants for legacy serialization
+const INFINITY_BYTE: u8 = 0xc0;
+const MODERN_Y_SIGN_BIT: u8 = 0x20; // Bit 5
+const LEGACY_Y_SIGN_BIT: u8 = 0x80; // Bit 7
+const MODERN_COMPRESSION_BIT: u8 = 0x80; // Bit 7
+const MODERN_FORMAT_MASK: u8 = 0x1f; // Clear top 3 bits
+const LEGACY_FORMAT_MASK: u8 = 0x7f; // Clear bit 7
+const LEGACY_VALIDATION_MASK: u8 = 0xe0; // Check bits 5-7 are clear
+
+/// Convert from modern to legacy format for compressed point serialization
+#[inline]
+fn modern_to_legacy_format(bytes: &mut [u8]) {
+    // Check for infinity point (same in both formats)
+    if bytes[0] == INFINITY_BYTE {
+        return;
+    }
+
+    // Extract y-coordinate sign from modern format (bit 5)
+    let y_sign = (bytes[0] & MODERN_Y_SIGN_BIT) != 0;
+
+    // Clear modern format bits (top 3 bits)
+    bytes[0] &= MODERN_FORMAT_MASK;
+
+    // Set legacy y-coordinate sign (bit 7)
+    if y_sign {
+        bytes[0] |= LEGACY_Y_SIGN_BIT;
+    }
+}
+
+/// Convert from legacy to modern format for compressed point deserialization
+#[inline]
+fn legacy_to_modern_format(bytes: &mut [u8]) -> Result<(), BlsError> {
+    // Check for infinity point (same in both formats)
+    if bytes[0] == INFINITY_BYTE {
+        return Ok(());
+    }
+
+    // Extract y-coordinate sign from legacy format (bit 7)
+    let y_sign = (bytes[0] & LEGACY_Y_SIGN_BIT) != 0;
+
+    // Clear legacy bits
+    bytes[0] &= LEGACY_FORMAT_MASK;
+
+    // Validate that no other high bits are set
+    // In legacy format, after extracting Y bit (bit 7), only lower 5 bits should be used
+    if bytes[0] & LEGACY_VALIDATION_MASK != 0 {
+        return Err(BlsError::LegacyFormatError(format!(
+            "Invalid legacy format: unexpected bits in byte[0] = 0x{:02x}",
+            bytes[0] | (if y_sign { LEGACY_Y_SIGN_BIT } else { 0 }) // Show original byte
+        )));
+    }
+
+    // Set modern format bits
+    bytes[0] |= MODERN_COMPRESSION_BIT; // Compression bit
+    if y_sign {
+        bytes[0] |= MODERN_Y_SIGN_BIT; // Y-coordinate sign in modern position
+    }
+
+    Ok(())
+}
+
+/// Validate modern format header byte
+#[inline]
+fn validate_modern_format(byte0: u8, point_type: &str) -> Result<(), BlsError> {
+    if byte0 != INFINITY_BYTE {
+        // Not infinity
+        // Modern format requires bit 7 set (compression) and bit 6 clear
+        if (byte0 & 0xc0) != 0x80 {
+            return Err(BlsError::DeserializationError(
+                format!("Invalid modern {} format: byte[0] = 0x{:02x}, expected bit pattern 10xxxxxx", point_type, byte0)
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Convert between legacy and modern G1 serialization formats
 impl LegacyG1Point for G1Projective {
     fn serialize_g1(&self, format: SerializationFormat) -> [u8; 48] {
@@ -14,25 +90,8 @@ impl LegacyG1Point for G1Projective {
         match format {
             SerializationFormat::Modern => bytes,
             SerializationFormat::Legacy => {
-                // Convert to legacy format
                 let mut legacy_bytes = bytes;
-
-                // Check for infinity point (same in both formats)
-                if legacy_bytes[0] == 0xc0 {
-                    return legacy_bytes;
-                }
-
-                // Extract y-coordinate sign from modern format (bit 5)
-                let y_sign = (legacy_bytes[0] & 0x20) != 0;
-
-                // Clear modern format bits (top 3 bits)
-                legacy_bytes[0] &= 0x1f;
-
-                // Set legacy y-coordinate sign (bit 7)
-                if y_sign {
-                    legacy_bytes[0] |= 0x80;
-                }
-
+                modern_to_legacy_format(&mut legacy_bytes);
                 legacy_bytes
             }
         }
@@ -41,16 +100,8 @@ impl LegacyG1Point for G1Projective {
     fn deserialize_g1(bytes: &[u8; 48], format: SerializationFormat) -> Result<Self, BlsError> {
         match format {
             SerializationFormat::Modern => {
-                // Modern format - validate format before deserialization
-                if bytes[0] != 0xc0 {
-                    // Not infinity
-                    // Modern format requires bit 7 set (compression) and bit 6 clear
-                    if (bytes[0] & 0xc0) != 0x80 {
-                        return Err(BlsError::DeserializationError(
-                            format!("Invalid modern G1 format: byte[0] = 0x{:02x}, expected bit pattern 10xxxxxx", bytes[0])
-                        ));
-                    }
-                }
+                // Validate modern format
+                validate_modern_format(bytes[0], "G1")?;
 
                 // Modern format - use standard deserialization
                 let opt = G1Affine::from_compressed(bytes);
@@ -61,37 +112,7 @@ impl LegacyG1Point for G1Projective {
             SerializationFormat::Legacy => {
                 // Convert from legacy format
                 let mut modern_bytes = *bytes;
-
-                // Check for infinity point (same in both formats)
-                if modern_bytes[0] == 0xc0 {
-                    let opt = G1Affine::from_compressed(&modern_bytes);
-                    return Option::<G1Affine>::from(opt)
-                        .map(Into::into)
-                        .ok_or_else(|| {
-                            BlsError::DeserializationError("Invalid infinity point".to_string())
-                        });
-                }
-
-                // Extract y-coordinate sign from legacy format (bit 7)
-                let y_sign = (modern_bytes[0] & 0x80) != 0;
-
-                // Clear legacy bits
-                modern_bytes[0] &= 0x7f;
-
-                // Validate that no other high bits are set
-                // In legacy format, after extracting Y bit (bit 7), only lower 5 bits should be used
-                if modern_bytes[0] & 0xe0 != 0 {
-                    return Err(BlsError::LegacyFormatError(format!(
-                        "Invalid legacy G1 format: unexpected bits in byte[0] = 0x{:02x}",
-                        bytes[0]
-                    )));
-                }
-
-                // Set modern format bits
-                modern_bytes[0] |= 0x80; // Compression bit
-                if y_sign {
-                    modern_bytes[0] |= 0x20; // Y-coordinate sign in modern position
-                }
+                legacy_to_modern_format(&mut modern_bytes)?;
 
                 let opt = G1Affine::from_compressed(&modern_bytes);
                 Option::<G1Affine>::from(opt)
@@ -113,25 +134,8 @@ impl LegacyG2Point for G2Projective {
         match format {
             SerializationFormat::Modern => bytes,
             SerializationFormat::Legacy => {
-                // Convert to legacy format
                 let mut legacy_bytes = bytes;
-
-                // Check for infinity point (same in both formats)
-                if legacy_bytes[0] == 0xc0 {
-                    return legacy_bytes;
-                }
-
-                // Extract y-coordinate sign from modern format (bit 5)
-                let y_sign = (legacy_bytes[0] & 0x20) != 0;
-
-                // Clear modern format bits (top 3 bits)
-                legacy_bytes[0] &= 0x1f;
-
-                // Set legacy y-coordinate sign (bit 7)
-                if y_sign {
-                    legacy_bytes[0] |= 0x80;
-                }
-
+                modern_to_legacy_format(&mut legacy_bytes);
                 legacy_bytes
             }
         }
@@ -140,16 +144,8 @@ impl LegacyG2Point for G2Projective {
     fn deserialize_g2(bytes: &[u8; 96], format: SerializationFormat) -> Result<Self, BlsError> {
         match format {
             SerializationFormat::Modern => {
-                // Modern format - validate format before deserialization
-                if bytes[0] != 0xc0 {
-                    // Not infinity
-                    // Modern format requires bit 7 set (compression) and bit 6 clear
-                    if (bytes[0] & 0xc0) != 0x80 {
-                        return Err(BlsError::DeserializationError(
-                            format!("Invalid modern G2 format: byte[0] = 0x{:02x}, expected bit pattern 10xxxxxx", bytes[0])
-                        ));
-                    }
-                }
+                // Validate modern format
+                validate_modern_format(bytes[0], "G2")?;
 
                 // Modern format - use standard deserialization
                 let opt = G2Affine::from_compressed(bytes);
@@ -160,37 +156,7 @@ impl LegacyG2Point for G2Projective {
             SerializationFormat::Legacy => {
                 // Convert from legacy format
                 let mut modern_bytes = *bytes;
-
-                // Check for infinity point (same in both formats)
-                if modern_bytes[0] == 0xc0 {
-                    let opt = G2Affine::from_compressed(&modern_bytes);
-                    return Option::<G2Affine>::from(opt)
-                        .map(Into::into)
-                        .ok_or_else(|| {
-                            BlsError::DeserializationError("Invalid infinity point".to_string())
-                        });
-                }
-
-                // Extract y-coordinate sign from legacy format (bit 7)
-                let y_sign = (modern_bytes[0] & 0x80) != 0;
-
-                // Clear legacy bits
-                modern_bytes[0] &= 0x7f;
-
-                // Validate that no other high bits are set
-                // In legacy format, after extracting Y bit (bit 7), only lower 5 bits should be used
-                if modern_bytes[0] & 0xe0 != 0 {
-                    return Err(BlsError::LegacyFormatError(format!(
-                        "Invalid legacy G2 format: unexpected bits in byte[0] = 0x{:02x}",
-                        bytes[0]
-                    )));
-                }
-
-                // Set modern format bits
-                modern_bytes[0] |= 0x80; // Compression bit
-                if y_sign {
-                    modern_bytes[0] |= 0x20; // Y-coordinate sign in modern position
-                }
+                legacy_to_modern_format(&mut modern_bytes)?;
 
                 let opt = G2Affine::from_compressed(&modern_bytes);
                 Option::<G2Affine>::from(opt)
