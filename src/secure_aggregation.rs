@@ -25,15 +25,18 @@ fn hash_public_keys<C: BlsSignatureImpl>(
     Ok(coefficients)
 }
 
+/// Type alias for the result of hash_public_keys_with_sorted
+type SortedKeysWithCoefficients<C> = (
+    Vec<PublicKey<C>>,
+    Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
+);
+
 /// Generate deterministic coefficients and return sorted keys for secure aggregation
 ///
 /// Returns a tuple of (sorted_keys, coefficients) to avoid redundant sorting in callers
 fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
     public_keys: &[PublicKey<C>],
-) -> BlsResult<(
-    Vec<PublicKey<C>>,
-    Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
-)> {
+) -> BlsResult<SortedKeysWithCoefficients<C>> {
     // Sort public keys by serialized bytes
     let mut sorted_keys = public_keys.to_vec();
     sorted_keys.sort_by(|a, b| a.0.to_bytes().as_ref().cmp(b.0.to_bytes().as_ref()));

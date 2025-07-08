@@ -1,10 +1,11 @@
 
 /// Serialization format for BLS signatures and public keys
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SerializationFormat {
     /// Legacy format - y-coordinate sign in bit 7
     Legacy,
     /// Modern IETF format - y-coordinate sign in bit 5
+    #[default]
     Modern,
 }
 
@@ -20,8 +21,3 @@ impl SerializationFormat {
     }
 }
 
-impl Default for SerializationFormat {
-    fn default() -> Self {
-        SerializationFormat::Modern
-    }
-}
