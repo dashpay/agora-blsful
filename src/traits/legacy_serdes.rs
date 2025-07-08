@@ -62,18 +62,35 @@ impl SerializationFormat {
             return Self::Either;
         }
 
-        // Check compression bit (bit 7)
-        if bytes[0] & 0x80 != 0 {
-            // Bit 7 set - modern format (compressed) or legacy Y=1
-            if bytes[0] & 0x40 != 0 {
-                // Bit 6 also set - invalid for normal points
-                return Self::Unknown;
-            }
-            // Need more context to determine
+        // Analyze bit patterns:
+        // Modern format: bit 7 = 1 (compressed), bit 6 = 0, bit 5 = Y-sign
+        // Legacy format: bit 7 = Y-sign, bits 6-0 are part of field element
+        
+        let bit7 = (bytes[0] & 0x80) != 0;
+        let bit6 = (bytes[0] & 0x40) != 0;
+        
+        if bit7 && !bit6 {
+            // Bit pattern 10xxxxxx
+            // This could be either:
+            // 1. Modern compressed format (bit 5 is Y-sign, bits 4-0 are part of field element)
+            // 2. Legacy Y=1 format where the field element happens to have bit 6 clear
+            
+            // We cannot reliably distinguish between modern compressed and legacy Y=1
+            // when we see pattern 10xxxxxx, because:
+            // - Modern: 0x80-0xBF range (10xxxxxx) with bit 5 as Y-sign
+            // - Legacy Y=1: 0x80-0xBF range with all bits part of field element
+            
+            // The only way to truly distinguish would be to try deserializing
+            // and see which one succeeds. For detection purposes, we return
+            // Unknown to indicate ambiguity.
             return Self::Unknown;
-        } else {
+        } else if !bit7 {
             // Bit 7 not set - definitely legacy Y=0
             return Self::Legacy;
+        } else {
+            // Bit pattern 11xxxxxx (except 0xc0 which we already handled)
+            // This is invalid for modern format
+            return Self::Unknown;
         }
     }
 
