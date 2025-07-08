@@ -24,9 +24,12 @@ pub enum BlsError {
     /// A verifiable secret sharing scheme error
     #[error("an error occurred during secret sharing")]
     VsssError,
+    /// An error occurred during deserialization
+    #[error("deserialization error: {0}")]
+    DeserializationError(String),
     /// An error occurred during serialization
     #[error("serialization error: {0}")]
-    DeserializationError(String),
+    SerializationError(String),
     /// Invalid coefficient in secure aggregation (extremely rare)
     #[error("invalid coefficient: zero coefficient generated")]
     InvalidCoefficient,
