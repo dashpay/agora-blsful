@@ -258,8 +258,10 @@ where
             ));
         }
 
-        #[cfg(target_endian = "little")]
-        repr_bytes.reverse();
+        // NOTE: Removed the platform-dependent endianness conversion
+        // The field representation should be interpreted according to the
+        // cryptographic library's specification, not the platform endianness
+        // This aligns with the standard hash_public_keys_with_sorted function
 
         let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
             .into_option()
