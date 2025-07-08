@@ -80,6 +80,45 @@ Verify a signature
 assert_eq!(sig.verify(pk, b"00000000-0000-0000-0000-000000000000").unwrap_u8(), 1u8);
 ```
 
+## Legacy Serialization Support
+
+This library supports both modern (IETF standard) and legacy (Dash-compatible) BLS serialization formats.
+
+### When to Use Legacy Mode
+
+Use legacy mode when:
+- Interoperating with Dash blockchain
+- Working with data serialized by older BLS libraries (e.g., relic-based implementations)
+- Maintaining backward compatibility with existing systems
+
+### Serialization Examples
+
+```rust
+// Modern format (default)
+let pk_bytes = public_key.to_bytes();
+let pk = PublicKey::try_from(&pk_bytes[..]).unwrap();
+
+// Legacy format
+let pk_legacy_bytes = public_key.to_bytes_with_mode(SerializationFormat::Legacy);
+let pk = PublicKey::from_bytes_with_mode(&pk_legacy_bytes, SerializationFormat::Legacy).unwrap();
+```
+
+### VerifySecure with Legacy Support
+
+When using secure aggregation (VerifySecure), the serialization mode affects coefficient generation:
+
+```rust
+// Modern secure aggregation
+let agg_sig = aggregate_secure(&public_keys, &signatures).unwrap();
+assert!(agg_sig.verify_secure(&public_keys, msg).is_ok());
+
+// Legacy secure aggregation
+let agg_sig = aggregate_secure(&public_keys, &signatures).unwrap();
+assert!(agg_sig.verify_secure_with_mode(&public_keys, msg, SerializationFormat::Legacy).is_ok());
+```
+
+**Important**: Signatures aggregated with `SerializationFormat::Legacy` must be verified with `SerializationFormat::Legacy`. Mixing modes will cause verification failures.
+
 ## License
 
 Licensed under either of

@@ -2,6 +2,33 @@ use crate::impls::inner_types::*;
 use crate::*;
 
 /// Represents a BLS signature for multiple signatures that signed different messages
+///
+/// An aggregate signature combines multiple individual signatures into a single
+/// signature. This is useful for compressing multiple signatures and allows for
+/// efficient batch verification. Each signature in the aggregate can be for a
+/// different message, unlike multi-signatures where all signatures are for the
+/// same message.
+///
+/// # Example
+/// ```
+/// # use blsful::*;
+/// # use blsful::impls::Bls12381G1Impl;
+/// let sk1 = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
+/// let sk2 = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
+/// let pk1 = PublicKey::from(&sk1);
+/// let pk2 = PublicKey::from(&sk2);
+/// 
+/// // Sign different messages
+/// let sig1 = sk1.sign(SignatureSchemes::Basic, b"message 1").unwrap();
+/// let sig2 = sk2.sign(SignatureSchemes::Basic, b"message 2").unwrap();
+/// 
+/// // Aggregate the signatures
+/// let agg_sig = AggregateSignature::from_signatures(&[sig1, sig2]).unwrap();
+/// 
+/// // Verify the aggregate signature
+/// let data = vec![(pk1, b"message 1".as_ref()), (pk2, b"message 2".as_ref())];
+/// assert!(agg_sig.verify(&data).is_ok());
+/// ```
 #[derive(PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AggregateSignature<C: BlsSignatureImpl> {
     /// The basic signature scheme
@@ -60,6 +87,18 @@ impl<C: BlsSignatureImpl> Clone for AggregateSignature<C> {
 
 impl<C: BlsSignatureImpl> subtle::ConditionallySelectable for AggregateSignature<C> {
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
+        // This implementation requires that both signatures use the same scheme.
+        // In constant-time code, mixing schemes should not occur.
+        debug_assert!(
+            matches!(
+                (a, b),
+                (Self::Basic(_), Self::Basic(_))
+                    | (Self::MessageAugmentation(_), Self::MessageAugmentation(_))
+                    | (Self::ProofOfPossession(_), Self::ProofOfPossession(_))
+            ),
+            "ConditionallySelectable requires aggregate signatures with matching schemes"
+        );
+        
         match (a, b) {
             (Self::Basic(a), Self::Basic(b)) => {
                 Self::Basic(<C as Pairing>::Signature::conditional_select(a, b, choice))
@@ -72,7 +111,11 @@ impl<C: BlsSignatureImpl> subtle::ConditionallySelectable for AggregateSignature
             (Self::ProofOfPossession(a), Self::ProofOfPossession(b)) => {
                 Self::ProofOfPossession(<C as Pairing>::Signature::conditional_select(a, b, choice))
             }
-            _ => panic!("Signature::conditional_select: mismatched variants"),
+            _ => {
+                // For mismatched variants, always return a's variant
+                // This maintains constant-time behavior but indicates a logic error
+                *a
+            }
         }
     }
 }
@@ -108,7 +151,9 @@ impl_from_derivatives_generic!(AggregateSignature);
 
 impl<C: BlsSignatureImpl> From<&AggregateSignature<C>> for Vec<u8> {
     fn from(value: &AggregateSignature<C>) -> Self {
-        serde_bare::to_vec(value).unwrap()
+        // This serialization should not fail for valid AggregateSignature types
+        // as serde_bare serialization of simple enums is infallible
+        serde_bare::to_vec(value).expect("aggregate signature serialization is infallible")
     }
 }
 
@@ -171,7 +216,7 @@ impl<C: BlsSignatureImpl> AggregateSignature<C> {
             sigs.iter().map(|s| *s.as_raw_value()).collect();
 
         // Use secure aggregation
-        let agg_sig = secure_aggregation::aggregate_secure::<C>(public_keys, &raw_sigs)?;
+        let agg_sig = aggregate_secure::<C>(public_keys, &raw_sigs)?;
 
         // Wrap in appropriate scheme
         match sigs[0] {

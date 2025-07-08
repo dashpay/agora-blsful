@@ -5,6 +5,7 @@
 mod elgamal;
 mod hash_to_point;
 mod hash_to_scalar;
+mod legacy_serdes;
 mod pairings;
 mod pk_multi;
 mod serdes;
@@ -20,6 +21,7 @@ mod time_crypt;
 pub use elgamal::*;
 pub use hash_to_point::*;
 pub use hash_to_scalar::*;
+pub use legacy_serdes::*;
 pub use pairings::*;
 pub use pk_multi::*;
 pub use serdes::*;

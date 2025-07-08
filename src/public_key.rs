@@ -133,3 +133,48 @@ impl<C: BlsSignatureImpl> PublicKey<C> {
         <C as BlsSignatureCore>::core_combine_public_key_shares(&points).map(Self)
     }
 }
+
+// Legacy serialization support
+impl<C: BlsSignatureImpl> PublicKey<C>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    /// Serialize with specified serialization format
+    ///
+    /// # Arguments
+    /// * `format` - The serialization format to use
+    pub fn to_bytes_with_mode(&self, format: SerializationFormat) -> Vec<u8> {
+        match format {
+            SerializationFormat::Legacy => self.0.serialize_g1(format).to_vec(),
+            SerializationFormat::Modern => self.to_bytes(),
+        }
+    }
+
+    /// Deserialize with specified serialization format
+    ///
+    /// # Arguments
+    /// * `bytes` - The bytes to deserialize
+    /// * `format` - The expected serialization format
+    pub fn from_bytes_with_mode(bytes: &[u8], format: SerializationFormat) -> BlsResult<Self> {
+        if bytes.len() != 48 {
+            return Err(BlsError::InvalidLength {
+                expected: 48,
+                actual: bytes.len(),
+            });
+        }
+
+        let mut array = [0u8; 48];
+        array.copy_from_slice(bytes);
+
+        let point = C::PublicKey::deserialize_g1(&array, format)?;
+        Ok(Self(point))
+    }
+
+}
+
+impl<C: BlsSignatureImpl> PublicKey<C> {
+    /// Get the raw bytes of the public key (modern format)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.to_bytes().as_ref().to_vec()
+    }
+}

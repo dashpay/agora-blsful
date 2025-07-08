@@ -25,15 +25,18 @@ fn hash_public_keys<C: BlsSignatureImpl>(
     Ok(coefficients)
 }
 
+/// Type alias for the result of hash_public_keys_with_sorted
+type SortedKeysWithCoefficients<C> = (
+    Vec<PublicKey<C>>,
+    Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
+);
+
 /// Generate deterministic coefficients and return sorted keys for secure aggregation
 ///
 /// Returns a tuple of (sorted_keys, coefficients) to avoid redundant sorting in callers
 fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
     public_keys: &[PublicKey<C>],
-) -> BlsResult<(
-    Vec<PublicKey<C>>,
-    Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
-)> {
+) -> BlsResult<SortedKeysWithCoefficients<C>> {
     // Sort public keys by serialized bytes
     let mut sorted_keys = public_keys.to_vec();
     sorted_keys.sort_by(|a, b| a.0.to_bytes().as_ref().cmp(b.0.to_bytes().as_ref()));
@@ -105,11 +108,18 @@ fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
     Ok((sorted_keys, coefficients))
 }
 
-/// Aggregate signatures using secure aggregation (prevents rogue key attacks)
-pub fn aggregate_secure<C: BlsSignatureImpl>(
+/// Internal implementation of secure aggregation with customizable serialization
+#[inline]
+fn aggregate_secure_internal<C: BlsSignatureImpl, F, H>(
     public_keys: &[PublicKey<C>],
     signatures: &[<C as Pairing>::Signature],
-) -> BlsResult<<C as Pairing>::Signature> {
+    serialize_fn: F,
+    hash_fn: H,
+) -> BlsResult<<C as Pairing>::Signature>
+where
+    F: Fn(&PublicKey<C>) -> Vec<u8>,
+    H: FnOnce(&[PublicKey<C>]) -> BlsResult<(Vec<PublicKey<C>>, Vec<<<C as Pairing>::PublicKey as Group>::Scalar>)>,
+{
     if public_keys.len() != signatures.len() {
         return Err(BlsError::InvalidInputs(
             "Mismatched array lengths".to_string(),
@@ -121,15 +131,15 @@ pub fn aggregate_secure<C: BlsSignatureImpl>(
     }
 
     // Generate coefficients and get sorted keys
-    let (sorted_keys, coefficients) = hash_public_keys_with_sorted(public_keys)?;
+    let (sorted_keys, coefficients) = hash_fn(public_keys)?;
 
     // Create index mapping from original to sorted order
     let mut sorted_indices = Vec::with_capacity(sorted_keys.len());
     for sorted_key in &sorted_keys {
-        let sorted_bytes = sorted_key.0.to_bytes();
+        let sorted_bytes = serialize_fn(sorted_key);
         let idx = public_keys
             .iter()
-            .position(|k| k.0.to_bytes().as_ref() == sorted_bytes.as_ref())
+            .position(|k| serialize_fn(k) == sorted_bytes)
             .ok_or_else(|| BlsError::InvalidInputs("Key mismatch".to_string()))?;
         sorted_indices.push(idx);
     }
@@ -143,13 +153,31 @@ pub fn aggregate_secure<C: BlsSignatureImpl>(
     Ok(aggregated_sig)
 }
 
-/// Internal verify using secure aggregation with specified DST
-fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+/// Aggregate signatures using secure aggregation (prevents rogue key attacks)
+pub fn aggregate_secure<C: BlsSignatureImpl>(
+    public_keys: &[PublicKey<C>],
+    signatures: &[<C as Pairing>::Signature],
+) -> BlsResult<<C as Pairing>::Signature> {
+    aggregate_secure_internal(
+        public_keys,
+        signatures,
+        |pk| pk.0.to_bytes().as_ref().to_vec(),
+        hash_public_keys_with_sorted,
+    )
+}
+
+/// Internal implementation of verify_secure with customizable hashing
+#[inline]
+fn verify_secure_with_dst_internal<C: BlsSignatureImpl, B: AsRef<[u8]>, H>(
     public_keys: &[PublicKey<C>],
     signature: <C as Pairing>::Signature,
     msg: B,
     dst: &'static [u8],
-) -> BlsResult<()> {
+    hash_fn: H,
+) -> BlsResult<()>
+where
+    H: FnOnce(&[PublicKey<C>]) -> BlsResult<(Vec<PublicKey<C>>, Vec<<<C as Pairing>::PublicKey as Group>::Scalar>)>,
+{
     // Handle empty case
     if public_keys.is_empty() {
         return if signature.is_identity().into() {
@@ -160,7 +188,7 @@ fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
     }
 
     // Generate coefficients and get sorted keys
-    let (sorted_keys, coefficients) = hash_public_keys_with_sorted(public_keys)?;
+    let (sorted_keys, coefficients) = hash_fn(public_keys)?;
 
     // Aggregate public keys with coefficients: pk_agg = Σ(pk[i] * t[i])
     let mut aggregated_pk = <C as Pairing>::PublicKey::identity();
@@ -170,6 +198,22 @@ fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
 
     // Perform standard verification
     <C as BlsSignatureCore>::core_verify(aggregated_pk, signature, msg.as_ref(), dst)
+}
+
+/// Internal verify using secure aggregation with specified DST
+fn verify_secure_with_dst<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    dst: &'static [u8],
+) -> BlsResult<()> {
+    verify_secure_with_dst_internal(
+        public_keys,
+        signature,
+        msg,
+        dst,
+        hash_public_keys_with_sorted,
+    )
 }
 
 /// Verify using secure aggregation for Basic scheme
@@ -202,6 +246,182 @@ pub fn verify_secure_pop<C: BlsSignatureImpl, B: AsRef<[u8]>>(
     msg: B,
 ) -> BlsResult<()> {
     verify_secure_with_dst::<C, B>(public_keys, signature, msg, <C as BlsSignaturePop>::SIG_DST)
+}
+
+// Legacy-aware secure aggregation functions
+
+/// Type alias for the result of hash_public_keys_with_sorted_mode
+type SortedKeysWithCoefficientsMode<C> = (
+    Vec<PublicKey<C>>,
+    Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
+);
+
+/// Generate deterministic coefficients and return sorted keys with legacy serialization support
+///
+/// Returns a tuple of (sorted_keys, coefficients) to avoid redundant sorting in callers
+fn hash_public_keys_with_sorted_mode<C: BlsSignatureImpl>(
+    public_keys: &[PublicKey<C>],
+    format: SerializationFormat,
+) -> BlsResult<SortedKeysWithCoefficientsMode<C>>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    // Sort public keys by serialized bytes using the specified mode
+    let mut sorted_pairs: Vec<(Vec<u8>, &PublicKey<C>)> = public_keys
+        .iter()
+        .map(|pk| (pk.to_bytes_with_mode(format), pk))
+        .collect();
+    sorted_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    // Hash all sorted public keys
+    let mut hasher = Sha256::new();
+    for (pk_bytes, _) in &sorted_pairs {
+        hasher.update(pk_bytes);
+    }
+    let base_hash: [u8; 32] = hasher.finalize().into();
+
+    // Generate coefficients
+    let mut coefficients = Vec::with_capacity(sorted_pairs.len());
+
+    for i in 0..sorted_pairs.len() {
+        // Create buffer: [4-byte BE index][32-byte hash]
+        let mut hasher = Sha256::new();
+        hasher.update((i as u32).to_be_bytes());
+        hasher.update(base_hash);
+        let hash: [u8; 32] = hasher.finalize().into();
+
+        // Convert to scalar using raw modular reduction (matching C++)
+        let mut repr =
+            <<<C as Pairing>::PublicKey as Group>::Scalar as PrimeField>::Repr::default();
+        let repr_bytes = repr.as_mut();
+
+        if repr_bytes.len() >= 32 {
+            let offset = repr_bytes.len() - 32;
+            repr_bytes[offset..].copy_from_slice(&hash);
+            for byte in &mut repr_bytes[..offset] {
+                *byte = 0;
+            }
+        } else {
+            return Err(BlsError::InvalidInputs(
+                "Field representation too small".to_string(),
+            ));
+        }
+
+        // NOTE: Removed the platform-dependent endianness conversion
+        // The field representation should be interpreted according to the
+        // cryptographic library's specification, not the platform endianness
+        // This aligns with the standard hash_public_keys_with_sorted function
+
+        let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
+            .into_option()
+            .ok_or_else(|| {
+                BlsError::InvalidInputs("Failed to create scalar from hash".to_string())
+            })?;
+
+        if scalar.is_zero().into() {
+            return Err(BlsError::InvalidCoefficient);
+        }
+
+        coefficients.push(scalar);
+    }
+
+    // Return sorted keys and coefficients
+    let sorted_keys = sorted_pairs.into_iter().map(|(_, pk)| *pk).collect();
+    Ok((sorted_keys, coefficients))
+}
+
+/// Aggregate signatures using secure aggregation with legacy support
+pub fn aggregate_secure_with_mode<C: BlsSignatureImpl>(
+    public_keys: &[PublicKey<C>],
+    signatures: &[<C as Pairing>::Signature],
+    format: SerializationFormat,
+) -> BlsResult<<C as Pairing>::Signature>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    aggregate_secure_internal(
+        public_keys,
+        signatures,
+        |pk| pk.to_bytes_with_mode(format),
+        |keys| hash_public_keys_with_sorted_mode(keys, format),
+    )
+}
+
+/// Internal verify using secure aggregation with specified DST and mode
+fn verify_secure_with_dst_and_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    dst: &'static [u8],
+    format: SerializationFormat,
+) -> BlsResult<()>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    verify_secure_with_dst_internal(
+        public_keys,
+        signature,
+        msg,
+        dst,
+        |keys| hash_public_keys_with_sorted_mode(keys, format),
+    )
+}
+
+/// Verify secure aggregation for Basic scheme with legacy support
+pub fn verify_secure_basic_with_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    format: SerializationFormat,
+) -> BlsResult<()>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    verify_secure_with_dst_and_mode::<C, B>(
+        public_keys,
+        signature,
+        msg,
+        <C as BlsSignatureBasic>::DST,
+        format,
+    )
+}
+
+/// Verify secure aggregation for MessageAugmentation scheme with legacy support
+pub fn verify_secure_message_augmentation_with_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    format: SerializationFormat,
+) -> BlsResult<()>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    verify_secure_with_dst_and_mode::<C, B>(
+        public_keys,
+        signature,
+        msg,
+        <C as BlsSignatureMessageAugmentation>::DST,
+        format,
+    )
+}
+
+/// Verify secure aggregation for ProofOfPossession scheme with legacy support
+pub fn verify_secure_pop_with_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
+    public_keys: &[PublicKey<C>],
+    signature: <C as Pairing>::Signature,
+    msg: B,
+    format: SerializationFormat,
+) -> BlsResult<()>
+where
+    C::PublicKey: LegacyG1Point,
+{
+    verify_secure_with_dst_and_mode::<C, B>(
+        public_keys,
+        signature,
+        msg,
+        <C as BlsSignaturePop>::SIG_DST,
+        format,
+    )
 }
 
 #[cfg(test)]
