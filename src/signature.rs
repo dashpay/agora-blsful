@@ -140,6 +140,29 @@ impl<C: BlsSignatureImpl> Signature<C> {
             Self::ProofOfPossession(s) => s,
         }
     }
+
+    /// Verify signature created by multiple signers (secure against rogue key attacks)
+    pub fn verify_secure<B: AsRef<[u8]>>(
+        &self,
+        public_keys: &[PublicKey<C>],
+        msg: B,
+    ) -> BlsResult<()> {
+        match self {
+            Self::Basic(sig) => {
+                secure_aggregation::verify_secure_basic::<C, B>(public_keys, *sig, msg)
+            }
+            Self::MessageAugmentation(sig) => {
+                secure_aggregation::verify_secure_message_augmentation::<C, B>(
+                    public_keys,
+                    *sig,
+                    msg,
+                )
+            }
+            Self::ProofOfPossession(sig) => {
+                secure_aggregation::verify_secure_pop::<C, B>(public_keys, *sig, msg)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
