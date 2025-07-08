@@ -262,8 +262,9 @@ mod tests {
         // The formats should produce different bytes (at least the first byte)
         assert_ne!(modern_bytes[0], legacy_bytes[0], "Formats should differ");
 
-        // Test with a point that will have Y=0 in legacy format
-        // This is a specific test case that should fail cross-format deserialization
+        // Test with a point that has a negative Y-coordinate sign (bit 7 = 0 in legacy format)
+        // This bit pattern causes the serialized value to fail modern format validation
+        // due to the incorrect bit prefix
         for i in 1..20u64 {
             let scalar = <G1Projective as Group>::Scalar::from(i);
             let test_point = G1Projective::generator() * scalar;

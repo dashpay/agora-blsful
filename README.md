@@ -113,11 +113,11 @@ When using secure aggregation (VerifySecure), the serialization mode affects coe
 ```rust
 // Modern secure aggregation
 let agg_sig = aggregate_secure(&public_keys, &signatures).unwrap();
-assert!(sig.verify_secure(&public_keys, msg).is_ok());
+assert!(agg_sig.verify_secure(&public_keys, msg).is_ok());
 
 // Legacy secure aggregation
-let agg_sig = aggregate_secure_with_mode(&public_keys, &signatures, true).unwrap();
-assert!(sig.verify_secure_with_mode(&public_keys, msg, true).is_ok());
+let agg_sig = aggregate_secure(&public_keys, &signatures).unwrap();
+assert!(agg_sig.verify_secure_with_mode(&public_keys, msg, true).is_ok());
 ```
 
 **Important**: Signatures aggregated with `legacy=true` must be verified with `legacy=true`. Mixing modes will cause verification failures.

@@ -290,9 +290,7 @@ where
     }
 
     if public_keys.is_empty() {
-        return Err(BlsError::InvalidInputs(
-            "Cannot aggregate zero signatures".to_string(),
-        ));
+        return Ok(<C as Pairing>::Signature::identity());
     }
 
     // Get coefficients using legacy-aware hashing
@@ -327,9 +325,11 @@ where
     C::PublicKey: LegacyG1Point,
 {
     if public_keys.is_empty() {
-        return Err(BlsError::InvalidInputs(
-            "Cannot verify with zero public keys".to_string(),
-        ));
+        return if signature.is_identity().into() {
+            Ok(())
+        } else {
+            Err(BlsError::InvalidSignature)
+        };
     }
 
     // Get coefficients using legacy-aware hashing
@@ -370,9 +370,11 @@ where
     C::PublicKey: LegacyG1Point,
 {
     if public_keys.is_empty() {
-        return Err(BlsError::InvalidInputs(
-            "Cannot verify with zero public keys".to_string(),
-        ));
+        return if signature.is_identity().into() {
+            Ok(())
+        } else {
+            Err(BlsError::InvalidSignature)
+        };
     }
 
     // Get coefficients using legacy-aware hashing
@@ -413,9 +415,11 @@ where
     C::PublicKey: LegacyG1Point,
 {
     if public_keys.is_empty() {
-        return Err(BlsError::InvalidInputs(
-            "Cannot verify with zero public keys".to_string(),
-        ));
+        return if signature.is_identity().into() {
+            Ok(())
+        } else {
+            Err(BlsError::InvalidSignature)
+        };
     }
 
     // Get coefficients using legacy-aware hashing

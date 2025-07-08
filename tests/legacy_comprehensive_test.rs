@@ -1,5 +1,6 @@
 //! Additional comprehensive tests for legacy serialization support
 
+use blsful::inner_types::GroupEncoding;
 use blsful::*;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -47,14 +48,21 @@ fn test_all_signature_schemes_legacy() {
 
 #[test]
 fn test_aggregate_signature_legacy() {
-    let msg = b"aggregate signature test";
+    // Test aggregation with different messages (required for basic aggregation)
+    let messages = [
+        b"message 1".as_ref(),
+        b"message 2".as_ref(),
+        b"message 3".as_ref(),
+        b"message 4".as_ref(),
+        b"message 5".as_ref(),
+    ];
 
     // Create multiple signers
     let signers: Vec<_> = (0..5)
         .map(|i| {
             let sk = SecretKey::<Bls12381G2Impl>::from_hash(&[i as u8; 32]);
             let pk = sk.public_key();
-            let sig = sk.sign(SignatureSchemes::Basic, msg).unwrap();
+            let sig = sk.sign(SignatureSchemes::Basic, messages[i]).unwrap();
             (sk, pk, sig)
         })
         .collect();
@@ -66,12 +74,17 @@ fn test_aggregate_signature_legacy() {
     let agg_sig = AggregateSignature::<Bls12381G2Impl>::from_signatures(&sigs).unwrap();
 
     // Verify aggregated signature
-    assert!(agg_sig.verify(&pks, msg).is_ok());
+    let pk_msg_pairs: Vec<_> = pks
+        .iter()
+        .zip(messages.iter())
+        .map(|(pk, msg)| (pk.clone(), *msg))
+        .collect();
+    assert!(agg_sig.verify(&pk_msg_pairs).is_ok());
 
     // Test serialization of aggregate signature
-    let agg_bytes = agg_sig.to_bytes();
+    let agg_bytes = Vec::<u8>::from(&agg_sig);
     let agg_restored = AggregateSignature::<Bls12381G2Impl>::try_from(&agg_bytes[..]).unwrap();
-    assert!(agg_restored.verify(&pks, msg).is_ok());
+    assert!(agg_restored.verify(&pk_msg_pairs).is_ok());
 }
 
 #[test]
@@ -97,22 +110,20 @@ fn test_multi_signature_legacy() {
     let agg_sig = AggregateSignature::<Bls12381G2Impl>::from_signatures(&sigs).unwrap();
 
     // Verify with all pk/msg pairs
-    let pk_msg_pairs: Vec<(&PublicKey<Bls12381G2Impl>, &[u8])> =
-        pks.iter().zip(messages.iter().copied()).collect();
+    let pk_msg_pairs: Vec<(PublicKey<Bls12381G2Impl>, &[u8])> =
+        pks.iter().cloned().zip(messages.iter().copied()).collect();
 
-    assert!(agg_sig.verify_multi(&pk_msg_pairs).is_ok());
+    assert!(agg_sig.verify(&pk_msg_pairs).is_ok());
 }
 
 #[test]
 fn test_threshold_signatures_legacy() {
     let threshold = 3;
-    let total = 5;
+    let _total = 5;
 
     // Create a secret key and split it
     let sk = SecretKey::<Bls12381G2Impl>::from_hash(b"threshold_test");
-    let shares = sk
-        .split::<ChaCha20Rng, 3, 5>(ChaCha20Rng::from_seed([0u8; 32]))
-        .unwrap();
+    let shares = sk.split(3, 5).unwrap();
 
     let msg = b"threshold signature test";
 
@@ -158,24 +169,41 @@ fn test_secure_aggregation_with_different_messages_legacy() {
 
     // Test both legacy and modern modes
     for legacy in [true, false] {
-        let sigs: Vec<_> = sks
+        let _sigs: Vec<_> = sks
             .iter()
             .zip(messages.iter())
             .map(|(sk, msg)| sk.sign(SignatureSchemes::Basic, msg).unwrap())
             .collect();
 
-        let raw_sigs: Vec<_> = sigs.iter().map(|s| *s.as_raw_value()).collect();
+        // Test that secure aggregation with different messages works correctly
+        // Since we can't sign the same message with secure aggregation, we test
+        // that legacy and modern modes produce different results due to different
+        // coefficient generation (based on different public key serialization)
 
-        // For secure aggregation with different messages, we need to use the right approach
-        // This is actually testing that the coefficient generation works correctly
-        let coeffs_legacy =
-            secure_aggregation::hash_public_keys_with_mode::<Bls12381G2Impl>(&pks, legacy).unwrap();
-        let coeffs_modern =
-            secure_aggregation::hash_public_keys_with_mode::<Bls12381G2Impl>(&pks, false).unwrap();
+        // Create signatures for the same message to test aggregation behavior
+        let test_msg = b"test message for coefficient comparison";
+        let test_sigs: Vec<_> = sks
+            .iter()
+            .map(|sk| sk.sign(SignatureSchemes::Basic, test_msg).unwrap())
+            .collect();
 
         if legacy {
-            // Coefficients should be different between legacy and modern
-            assert_ne!(coeffs_legacy[0], coeffs_modern[0]);
+            // Aggregate using legacy mode
+            let test_raw_sigs: Vec<_> = test_sigs.iter().map(|s| *s.as_raw_value()).collect();
+            let agg_legacy =
+                secure_aggregation::aggregate_secure_with_mode(&pks, &test_raw_sigs, true).unwrap();
+
+            // Aggregate using modern mode
+            let agg_modern = secure_aggregation::aggregate_secure(&pks, &test_raw_sigs).unwrap();
+
+            // The aggregated signatures should be different due to different coefficients
+            // This indirectly tests that coefficient generation differs between modes
+            let legacy_bytes = agg_legacy.to_bytes().as_ref().to_vec();
+            let modern_bytes = agg_modern.to_bytes().as_ref().to_vec();
+            assert_ne!(
+                legacy_bytes, modern_bytes,
+                "Legacy and modern secure aggregation should produce different results"
+            );
         }
     }
 }
@@ -350,19 +378,27 @@ fn test_batch_verification_legacy() {
 
 #[test]
 fn test_zero_scalar_edge_case() {
-    // Test with zero scalar (results in identity/infinity point)
-    let zero_sk = SecretKey::<Bls12381G2Impl>::from_be_bytes(&[0u8; 32]).unwrap();
-    let infinity_pk = zero_sk.public_key();
+    // Test with zero scalar - in BLS, zero scalar returns None in CtOption
+    let result = SecretKey::<Bls12381G2Impl>::from_be_bytes(&[0u8; 32]);
 
-    // Should be identity
-    assert_eq!(infinity_pk, PublicKey::default());
+    // Zero is not a valid secret key in BLS
+    assert!(
+        bool::from(result.is_none()),
+        "Zero scalar should not be a valid secret key"
+    );
+
+    // Test identity/infinity point serialization
+    let identity_pk = PublicKey::<Bls12381G2Impl>::default();
 
     // Test both formats - should be identical for infinity
-    let modern = infinity_pk.to_bytes_with_mode(false);
-    let legacy = infinity_pk.to_bytes_with_mode(true);
+    let modern = identity_pk.to_bytes_with_mode(false);
+    let legacy = identity_pk.to_bytes_with_mode(true);
 
-    assert_eq!(modern, legacy);
-    assert_eq!(modern[0], 0xc0);
+    assert_eq!(
+        modern, legacy,
+        "Identity point should have same serialization"
+    );
+    assert_eq!(modern[0], 0xc0, "Identity point should start with 0xc0");
 }
 
 #[test]

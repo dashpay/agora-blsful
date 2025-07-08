@@ -178,13 +178,8 @@ where
         if legacy {
             self.as_raw_value().serialize_g2(true).to_vec()
         } else {
-            self.to_bytes()
+            self.as_raw_value().to_bytes().as_ref().to_vec()
         }
-    }
-
-    /// Get raw bytes of the signature (modern format)
-    pub fn to_bytes(&self) -> Vec<u8> {
-        self.as_raw_value().to_bytes().as_ref().to_vec()
     }
 
     /// Deserialize signature with legacy format support
