@@ -171,41 +171,6 @@ where
         Ok(Self(point))
     }
 
-    /// Try to deserialize from either format automatically
-    ///
-    /// First tries modern format, then falls back to legacy format
-    pub fn from_bytes_auto(bytes: &[u8]) -> BlsResult<Self> {
-        // Check format hints first
-        let format = Self::detect_format(bytes);
-
-        match format {
-            SerializationFormat::Legacy => {
-                // Definitely legacy format
-                Self::from_bytes_with_mode(bytes, true)
-            }
-            SerializationFormat::Either => {
-                // Infinity point - works with either format
-                Self::from_bytes_with_mode(bytes, false)
-            }
-            _ => {
-                // Try modern format first (current default)
-                if let Ok(pk) = Self::from_bytes_with_mode(bytes, false) {
-                    return Ok(pk);
-                }
-
-                // Fall back to legacy format
-                Self::from_bytes_with_mode(bytes, true)
-            }
-        }
-    }
-
-    /// Detect the serialization format of the given bytes
-    pub fn detect_format(bytes: &[u8]) -> SerializationFormat {
-        if bytes.len() < 48 {
-            return SerializationFormat::Unknown;
-        }
-        SerializationFormat::detect_g1(bytes)
-    }
 }
 
 impl<C: BlsSignatureImpl> PublicKey<C> {

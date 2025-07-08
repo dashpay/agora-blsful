@@ -105,40 +105,6 @@ fn test_cross_format_deserialization_fails() {
     assert!(found_y0, "Should find at least one Y=0 case");
 }
 
-#[test]
-fn test_format_detection() {
-    let sk = SecretKey::<Bls12381G2Impl>::from_hash(b"test_seed_4");
-    let pk = sk.public_key();
-
-    // Test format detection for modern format
-    let modern_bytes = pk.to_bytes_with_mode(false);
-    let detected_modern = PublicKey::<Bls12381G2Impl>::detect_format(&modern_bytes);
-    // Modern format should have compression bit set (0x80)
-    assert!(modern_bytes[0] & 0x80 != 0);
-    // Detection might be Unknown since modern format with Y=1 can look ambiguous
-    assert!(matches!(
-        detected_modern,
-        SerializationFormat::Unknown | SerializationFormat::Modern
-    ));
-
-    // Test format detection for legacy format
-    let legacy_bytes = pk.to_bytes_with_mode(true);
-    let detected_legacy = PublicKey::<Bls12381G2Impl>::detect_format(&legacy_bytes);
-    // Check the actual detection based on Y coordinate
-    if (legacy_bytes[0] & 0x80) == 0 {
-        // Legacy Y=0 should be detected as Legacy
-        assert_eq!(detected_legacy, SerializationFormat::Legacy);
-    } else {
-        // Legacy Y=1 is ambiguous (could be modern compressed)
-        assert_eq!(detected_legacy, SerializationFormat::Unknown);
-    }
-
-    // Test infinity detection
-    let infinity = PublicKey::<Bls12381G2Impl>::default();
-    let infinity_bytes = infinity.to_bytes();
-    let detected = PublicKey::<Bls12381G2Impl>::detect_format(&infinity_bytes);
-    assert_eq!(detected, SerializationFormat::Either); // Infinity is same in both
-}
 
 #[test]
 fn test_verify_secure_legacy_compatibility() {
@@ -233,38 +199,6 @@ fn test_legacy_coefficient_generation_differs() {
     assert_ne!(agg_legacy, agg_modern);
 }
 
-#[test]
-fn test_auto_format_detection() {
-    // Test with a key that has Y=0 in legacy format (unambiguous)
-    let mut pk_y0 = None;
-    for i in 0..100u8 {
-        let test_sk = SecretKey::<Bls12381G2Impl>::from_hash(&[i; 32]);
-        let test_pk = test_sk.public_key();
-        let test_legacy = test_pk.to_bytes_with_mode(true);
-
-        if (test_legacy[0] & 0x80) == 0 {
-            pk_y0 = Some((test_sk, test_pk));
-            break;
-        }
-    }
-
-    let (_sk, pk) = pk_y0.expect("Should find Y=0 case");
-
-    // Serialize in modern format
-    let modern_bytes = pk.to_bytes_with_mode(false);
-
-    // Auto-detection should work
-    let pk_auto = PublicKey::from_bytes_auto(&modern_bytes).unwrap();
-    assert_eq!(pk, pk_auto);
-
-    // Serialize in legacy format (Y=0 case)
-    let legacy_bytes = pk.to_bytes_with_mode(true);
-    assert!((legacy_bytes[0] & 0x80) == 0, "Should be Y=0 case");
-
-    // Auto-detection should work for legacy Y=0
-    let pk_auto_legacy = PublicKey::<Bls12381G2Impl>::from_bytes_auto(&legacy_bytes).unwrap();
-    assert_eq!(pk, pk_auto_legacy);
-}
 
 #[test]
 fn test_legacy_bit_patterns() {

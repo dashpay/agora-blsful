@@ -101,9 +101,6 @@ let pk = PublicKey::try_from(&pk_bytes[..]).unwrap();
 // Legacy format
 let pk_legacy_bytes = public_key.to_bytes_with_mode(true);
 let pk = PublicKey::from_bytes_with_mode(&pk_legacy_bytes, true).unwrap();
-
-// Auto-detect format
-let pk = PublicKey::from_bytes_auto(&some_bytes).unwrap();
 ```
 
 ### VerifySecure with Legacy Support

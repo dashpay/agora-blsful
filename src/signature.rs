@@ -209,13 +209,6 @@ where
         }
     }
 
-    /// Detect the serialization format of the given signature bytes
-    pub fn detect_format(bytes: &[u8]) -> SerializationFormat {
-        if bytes.len() < 96 {
-            return SerializationFormat::Unknown;
-        }
-        SerializationFormat::detect_g2(bytes)
-    }
 
     /// Verify signature with legacy-aware secure aggregation
     pub fn verify_secure_with_mode<B: AsRef<[u8]>>(
