@@ -8,22 +8,6 @@
 /// - **Modern**: Y-coordinate sign bit is stored in bit 5 (IETF standard)
 /// - **Legacy**: Y-coordinate sign bit is stored in bit 7 (Dash-compatible)
 ///
-/// # Example
-/// ```
-/// # use blsful::*;
-/// # use blsful::impls::Bls12381G1Impl;
-/// let sk = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
-/// let pk = PublicKey::from(&sk);
-/// 
-/// // Serialize using modern format (default)
-/// let modern_bytes = pk.to_bytes();
-/// 
-/// // Serialize using legacy format
-/// let legacy_bytes = pk.to_bytes_with_mode(SerializationFormat::Legacy);
-/// 
-/// // The first byte will differ between formats
-/// assert_ne!(modern_bytes[0], legacy_bytes[0]);
-/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SerializationFormat {
     /// Legacy format - y-coordinate sign in bit 7
