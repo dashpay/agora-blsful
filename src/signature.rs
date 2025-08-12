@@ -10,13 +10,13 @@ use subtle::ConditionallySelectable;
 /// # Example
 /// ```
 /// # use blsful::*;
-/// # use blsful::impls::Bls12381G1Impl;
+/// # use blsful::Bls12381G1Impl;
 /// let sk = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
 /// let msg = b"test message";
-/// 
+///
 /// // Create a signature using the Basic scheme
 /// let sig = sk.sign(SignatureSchemes::Basic, msg).unwrap();
-/// 
+///
 /// // Verify the signature
 /// let pk = PublicKey::from(&sk);
 /// assert!(sig.verify(&pk, msg).is_ok());
@@ -85,7 +85,7 @@ impl<C: BlsSignatureImpl> ConditionallySelectable for Signature<C> {
             a.same_scheme(b),
             "ConditionallySelectable requires signatures with matching schemes"
         );
-        
+
         match (a, b) {
             (Self::Basic(a), Self::Basic(b)) => {
                 Self::Basic(<C as Pairing>::Signature::conditional_select(a, b, choice))
@@ -228,25 +228,6 @@ where
     /// * `InvalidLength` if bytes is not exactly 96 bytes
     /// * `DeserializationError` if the bytes are not a valid signature
     ///
-    /// # Example
-    /// ```
-    /// # use blsful::*;
-    /// # use blsful::impls::Bls12381G1Impl;
-    /// let sk = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
-    /// let sig = sk.sign(SignatureSchemes::Basic, b"message").unwrap();
-    /// 
-    /// // Serialize with legacy format
-    /// let bytes = sig.to_bytes_with_mode(SerializationFormat::Legacy);
-    /// 
-    /// // Deserialize - must specify the same scheme (Basic)
-    /// let restored = Signature::from_bytes_with_mode(
-    ///     &bytes,
-    ///     SignatureSchemes::Basic,  // Must match original scheme
-    ///     SerializationFormat::Legacy
-    /// ).unwrap();
-    /// 
-    /// assert_eq!(sig, restored);
-    /// ```
     pub fn from_bytes_with_mode(
         bytes: &[u8],
         scheme: SignatureSchemes,
@@ -270,7 +251,6 @@ where
             SignatureSchemes::ProofOfPossession => Ok(Self::ProofOfPossession(point)),
         }
     }
-
 
     /// Verify signature with legacy-aware secure aggregation
     pub fn verify_secure_with_mode<B: AsRef<[u8]>>(

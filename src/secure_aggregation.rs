@@ -78,17 +78,14 @@ fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
             for byte in &mut repr_bytes[..offset] {
                 *byte = 0;
             }
+            // Reverse bytes since from_repr expects little-endian but hash is big-endian
+            repr_bytes.reverse();
         } else {
             // This shouldn't happen for BLS12-381, but handle it gracefully
             return Err(BlsError::InvalidInputs(
                 "Field representation too small".to_string(),
             ));
         }
-
-        // NOTE: Removed the platform-dependent endianness conversion
-        // The field representation should be interpreted according to the
-        // cryptographic library's specification, not the platform endianness
-        // This fixes the cross-platform compatibility issue
 
         // Create scalar from representation - this automatically reduces modulo field order
         let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
@@ -118,7 +115,12 @@ fn aggregate_secure_internal<C: BlsSignatureImpl, F, H>(
 ) -> BlsResult<<C as Pairing>::Signature>
 where
     F: Fn(&PublicKey<C>) -> Vec<u8>,
-    H: FnOnce(&[PublicKey<C>]) -> BlsResult<(Vec<PublicKey<C>>, Vec<<<C as Pairing>::PublicKey as Group>::Scalar>)>,
+    H: FnOnce(
+        &[PublicKey<C>],
+    ) -> BlsResult<(
+        Vec<PublicKey<C>>,
+        Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
+    )>,
 {
     if public_keys.len() != signatures.len() {
         return Err(BlsError::InvalidInputs(
@@ -176,7 +178,12 @@ fn verify_secure_with_dst_internal<C: BlsSignatureImpl, B: AsRef<[u8]>, H>(
     hash_fn: H,
 ) -> BlsResult<()>
 where
-    H: FnOnce(&[PublicKey<C>]) -> BlsResult<(Vec<PublicKey<C>>, Vec<<<C as Pairing>::PublicKey as Group>::Scalar>)>,
+    H: FnOnce(
+        &[PublicKey<C>],
+    ) -> BlsResult<(
+        Vec<PublicKey<C>>,
+        Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
+    )>,
 {
     // Handle empty case
     if public_keys.is_empty() {
@@ -301,16 +308,13 @@ where
             for byte in &mut repr_bytes[..offset] {
                 *byte = 0;
             }
+            // Reverse bytes since from_repr expects little-endian but hash is big-endian
+            repr_bytes.reverse();
         } else {
             return Err(BlsError::InvalidInputs(
                 "Field representation too small".to_string(),
             ));
         }
-
-        // NOTE: Removed the platform-dependent endianness conversion
-        // The field representation should be interpreted according to the
-        // cryptographic library's specification, not the platform endianness
-        // This aligns with the standard hash_public_keys_with_sorted function
 
         let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
             .into_option()
@@ -358,13 +362,9 @@ fn verify_secure_with_dst_and_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
 where
     C::PublicKey: LegacyG1Point,
 {
-    verify_secure_with_dst_internal(
-        public_keys,
-        signature,
-        msg,
-        dst,
-        |keys| hash_public_keys_with_sorted_mode(keys, format),
-    )
+    verify_secure_with_dst_internal(public_keys, signature, msg, dst, |keys| {
+        hash_public_keys_with_sorted_mode(keys, format)
+    })
 }
 
 /// Verify secure aggregation for Basic scheme with legacy support

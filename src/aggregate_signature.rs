@@ -12,7 +12,7 @@ use crate::*;
 /// # Example
 /// ```
 /// # use blsful::*;
-/// # use blsful::impls::Bls12381G1Impl;
+/// # use blsful::Bls12381G1Impl;
 /// let sk1 = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
 /// let sk2 = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
 /// let pk1 = PublicKey::from(&sk1);
