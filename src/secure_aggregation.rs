@@ -78,17 +78,14 @@ fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
             for byte in &mut repr_bytes[..offset] {
                 *byte = 0;
             }
+            // Reverse bytes since from_repr expects little-endian but hash is big-endian
+            repr_bytes.reverse();
         } else {
             // This shouldn't happen for BLS12-381, but handle it gracefully
             return Err(BlsError::InvalidInputs(
                 "Field representation too small".to_string(),
             ));
         }
-
-        // NOTE: Removed the platform-dependent endianness conversion
-        // The field representation should be interpreted according to the
-        // cryptographic library's specification, not the platform endianness
-        // This fixes the cross-platform compatibility issue
 
         // Create scalar from representation - this automatically reduces modulo field order
         let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
@@ -301,16 +298,13 @@ where
             for byte in &mut repr_bytes[..offset] {
                 *byte = 0;
             }
+            // Reverse bytes since from_repr expects little-endian but hash is big-endian
+            repr_bytes.reverse();
         } else {
             return Err(BlsError::InvalidInputs(
                 "Field representation too small".to_string(),
             ));
         }
-
-        // NOTE: Removed the platform-dependent endianness conversion
-        // The field representation should be interpreted according to the
-        // cryptographic library's specification, not the platform endianness
-        // This aligns with the standard hash_public_keys_with_sorted function
 
         let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
             .into_option()
