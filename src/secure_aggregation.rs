@@ -115,7 +115,12 @@ fn aggregate_secure_internal<C: BlsSignatureImpl, F, H>(
 ) -> BlsResult<<C as Pairing>::Signature>
 where
     F: Fn(&PublicKey<C>) -> Vec<u8>,
-    H: FnOnce(&[PublicKey<C>]) -> BlsResult<(Vec<PublicKey<C>>, Vec<<<C as Pairing>::PublicKey as Group>::Scalar>)>,
+    H: FnOnce(
+        &[PublicKey<C>],
+    ) -> BlsResult<(
+        Vec<PublicKey<C>>,
+        Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
+    )>,
 {
     if public_keys.len() != signatures.len() {
         return Err(BlsError::InvalidInputs(
@@ -173,7 +178,12 @@ fn verify_secure_with_dst_internal<C: BlsSignatureImpl, B: AsRef<[u8]>, H>(
     hash_fn: H,
 ) -> BlsResult<()>
 where
-    H: FnOnce(&[PublicKey<C>]) -> BlsResult<(Vec<PublicKey<C>>, Vec<<<C as Pairing>::PublicKey as Group>::Scalar>)>,
+    H: FnOnce(
+        &[PublicKey<C>],
+    ) -> BlsResult<(
+        Vec<PublicKey<C>>,
+        Vec<<<C as Pairing>::PublicKey as Group>::Scalar>,
+    )>,
 {
     // Handle empty case
     if public_keys.is_empty() {
@@ -352,13 +362,9 @@ fn verify_secure_with_dst_and_mode<C: BlsSignatureImpl, B: AsRef<[u8]>>(
 where
     C::PublicKey: LegacyG1Point,
 {
-    verify_secure_with_dst_internal(
-        public_keys,
-        signature,
-        msg,
-        dst,
-        |keys| hash_public_keys_with_sorted_mode(keys, format),
-    )
+    verify_secure_with_dst_internal(public_keys, signature, msg, dst, |keys| {
+        hash_public_keys_with_sorted_mode(keys, format)
+    })
 }
 
 /// Verify secure aggregation for Basic scheme with legacy support

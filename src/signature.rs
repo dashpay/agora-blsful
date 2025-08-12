@@ -13,10 +13,10 @@ use subtle::ConditionallySelectable;
 /// # use blsful::Bls12381G1Impl;
 /// let sk = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
 /// let msg = b"test message";
-/// 
+///
 /// // Create a signature using the Basic scheme
 /// let sig = sk.sign(SignatureSchemes::Basic, msg).unwrap();
-/// 
+///
 /// // Verify the signature
 /// let pk = PublicKey::from(&sk);
 /// assert!(sig.verify(&pk, msg).is_ok());
@@ -85,7 +85,7 @@ impl<C: BlsSignatureImpl> ConditionallySelectable for Signature<C> {
             a.same_scheme(b),
             "ConditionallySelectable requires signatures with matching schemes"
         );
-        
+
         match (a, b) {
             (Self::Basic(a), Self::Basic(b)) => {
                 Self::Basic(<C as Pairing>::Signature::conditional_select(a, b, choice))
@@ -251,7 +251,6 @@ where
             SignatureSchemes::ProofOfPossession => Ok(Self::ProofOfPossession(point)),
         }
     }
-
 
     /// Verify signature with legacy-aware secure aggregation
     pub fn verify_secure_with_mode<B: AsRef<[u8]>>(

@@ -7,8 +7,8 @@
 //! 3. Deterministic coefficient generation
 //! 4. Order independence of key aggregation
 
-use blsful::*;
 use blsful::SerializationFormat::Modern;
+use blsful::*;
 
 #[test]
 fn test_secure_aggregation_three_signers() {
@@ -217,16 +217,19 @@ fn test_large_scale_aggregate_signature_verification() {
         public_keys.push(pk);
     }
 
-    let single_sig = Signature::from_bytes_with_mode(
-        sig_bytes.as_slice(),
-        SignatureSchemes::Basic,
-        Modern,
-    ).expect("Failed to create Signature from bytes");
+    let single_sig =
+        Signature::from_bytes_with_mode(sig_bytes.as_slice(), SignatureSchemes::Basic, Modern)
+            .expect("Failed to create Signature from bytes");
 
-    assert_eq!(sig_hex, hex::encode(single_sig.to_bytes_with_mode(SerializationFormat::Modern)));
-
-    assert!(single_sig.verify_secure(&public_keys, &message_bytes).is_ok(),
-        "Aggregate signature should verify successfully with secure aggregation"
+    assert_eq!(
+        sig_hex,
+        hex::encode(single_sig.to_bytes_with_mode(SerializationFormat::Modern))
     );
 
+    assert!(
+        single_sig
+            .verify_secure(&public_keys, &message_bytes)
+            .is_ok(),
+        "Aggregate signature should verify successfully with secure aggregation"
+    );
 }

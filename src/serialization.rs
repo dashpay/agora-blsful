@@ -1,4 +1,3 @@
-
 /// Serialization format for BLS signatures and public keys
 ///
 /// This enum specifies whether to use the modern IETF standard format or
@@ -22,10 +21,9 @@ impl SerializationFormat {
     pub fn is_legacy(&self) -> bool {
         matches!(self, SerializationFormat::Legacy)
     }
-    
+
     /// Returns true if this is the modern format
     pub fn is_modern(&self) -> bool {
         matches!(self, SerializationFormat::Modern)
     }
 }
-
