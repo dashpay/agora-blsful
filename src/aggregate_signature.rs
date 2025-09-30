@@ -17,14 +17,14 @@ use crate::*;
 /// let sk2 = SecretKey::<Bls12381G1Impl>::random(rand_core::OsRng);
 /// let pk1 = PublicKey::from(&sk1);
 /// let pk2 = PublicKey::from(&sk2);
-/// 
+///
 /// // Sign different messages
 /// let sig1 = sk1.sign(SignatureSchemes::Basic, b"message 1").unwrap();
 /// let sig2 = sk2.sign(SignatureSchemes::Basic, b"message 2").unwrap();
-/// 
+///
 /// // Aggregate the signatures
 /// let agg_sig = AggregateSignature::from_signatures(&[sig1, sig2]).unwrap();
-/// 
+///
 /// // Verify the aggregate signature
 /// let data = vec![(pk1, b"message 1".as_ref()), (pk2, b"message 2".as_ref())];
 /// assert!(agg_sig.verify(&data).is_ok());
@@ -98,7 +98,7 @@ impl<C: BlsSignatureImpl> subtle::ConditionallySelectable for AggregateSignature
             ),
             "ConditionallySelectable requires aggregate signatures with matching schemes"
         );
-        
+
         match (a, b) {
             (Self::Basic(a), Self::Basic(b)) => {
                 Self::Basic(<C as Pairing>::Signature::conditional_select(a, b, choice))

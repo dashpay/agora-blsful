@@ -73,9 +73,10 @@ fn validate_modern_format(byte0: u8, point_type: &str) -> Result<(), BlsError> {
         // Not infinity
         // Modern format requires bit 7 set (compression) and bit 6 clear
         if (byte0 & 0xc0) != 0x80 {
-            return Err(BlsError::DeserializationError(
-                format!("Invalid modern {} format: byte[0] = 0x{:02x}, expected bit pattern 10xxxxxx", point_type, byte0)
-            ));
+            return Err(BlsError::DeserializationError(format!(
+                "Invalid modern {} format: byte[0] = 0x{:02x}, expected bit pattern 10xxxxxx",
+                point_type, byte0
+            )));
         }
     }
     Ok(())
@@ -118,7 +119,9 @@ impl LegacyG1Point for G1Projective {
                 Option::<G1Affine>::from(opt)
                     .map(Into::into)
                     .ok_or_else(|| {
-                        BlsError::DeserializationError("Invalid G1 point after conversion".to_string())
+                        BlsError::DeserializationError(
+                            "Invalid G1 point after conversion".to_string(),
+                        )
                     })
             }
         }
@@ -162,7 +165,9 @@ impl LegacyG2Point for G2Projective {
                 Option::<G2Affine>::from(opt)
                     .map(Into::into)
                     .ok_or_else(|| {
-                        BlsError::DeserializationError("Invalid G2 point after conversion".to_string())
+                        BlsError::DeserializationError(
+                            "Invalid G2 point after conversion".to_string(),
+                        )
                     })
             }
         }
@@ -180,12 +185,14 @@ mod tests {
 
         // Test modern format roundtrip
         let modern_bytes = point.serialize_g1(SerializationFormat::Modern);
-        let restored_modern = G1Projective::deserialize_g1(&modern_bytes, SerializationFormat::Modern).unwrap();
+        let restored_modern =
+            G1Projective::deserialize_g1(&modern_bytes, SerializationFormat::Modern).unwrap();
         assert_eq!(point, restored_modern);
 
         // Test legacy format roundtrip
         let legacy_bytes = point.serialize_g1(SerializationFormat::Legacy);
-        let restored_legacy = G1Projective::deserialize_g1(&legacy_bytes, SerializationFormat::Legacy).unwrap();
+        let restored_legacy =
+            G1Projective::deserialize_g1(&legacy_bytes, SerializationFormat::Legacy).unwrap();
         assert_eq!(point, restored_legacy);
 
         // Verify formats are different
@@ -211,12 +218,14 @@ mod tests {
 
         // Test modern format roundtrip
         let modern_bytes = point.serialize_g2(SerializationFormat::Modern);
-        let restored_modern = G2Projective::deserialize_g2(&modern_bytes, SerializationFormat::Modern).unwrap();
+        let restored_modern =
+            G2Projective::deserialize_g2(&modern_bytes, SerializationFormat::Modern).unwrap();
         assert_eq!(point, restored_modern);
 
         // Test legacy format roundtrip
         let legacy_bytes = point.serialize_g2(SerializationFormat::Legacy);
-        let restored_legacy = G2Projective::deserialize_g2(&legacy_bytes, SerializationFormat::Legacy).unwrap();
+        let restored_legacy =
+            G2Projective::deserialize_g2(&legacy_bytes, SerializationFormat::Legacy).unwrap();
         assert_eq!(point, restored_legacy);
 
         // Verify formats are different
@@ -244,7 +253,8 @@ mod tests {
 
             if (test_legacy[0] & 0x80) == 0 {
                 // Found Y=0 case - this should fail modern deserialization
-                let result = G1Projective::deserialize_g1(&test_legacy, SerializationFormat::Modern);
+                let result =
+                    G1Projective::deserialize_g1(&test_legacy, SerializationFormat::Modern);
                 assert!(result.is_err(), "Legacy Y=0 should fail modern deser");
                 break;
             }

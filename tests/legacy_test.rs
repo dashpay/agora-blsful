@@ -10,12 +10,14 @@ fn test_g1_legacy_serialization_roundtrip() {
 
     // Test modern format roundtrip
     let modern_bytes = pk1.to_bytes_with_mode(SerializationFormat::Modern);
-    let pk1_modern = PublicKey::from_bytes_with_mode(&modern_bytes, SerializationFormat::Modern).unwrap();
+    let pk1_modern =
+        PublicKey::from_bytes_with_mode(&modern_bytes, SerializationFormat::Modern).unwrap();
     assert_eq!(pk1, pk1_modern);
 
     // Test legacy format roundtrip
     let legacy_bytes = pk1.to_bytes_with_mode(SerializationFormat::Legacy);
-    let pk1_legacy = PublicKey::from_bytes_with_mode(&legacy_bytes, SerializationFormat::Legacy).unwrap();
+    let pk1_legacy =
+        PublicKey::from_bytes_with_mode(&legacy_bytes, SerializationFormat::Legacy).unwrap();
     assert_eq!(pk1, pk1_legacy);
 
     // Verify formats are different
@@ -76,7 +78,10 @@ fn test_cross_format_deserialization_fails() {
     let modern_bytes = pk.to_bytes_with_mode(SerializationFormat::Modern);
 
     // Try to deserialize as legacy - should fail because formats are incompatible
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&modern_bytes, SerializationFormat::Legacy);
+    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(
+        &modern_bytes,
+        SerializationFormat::Legacy,
+    );
     assert!(
         result.is_err(),
         "Modern bytes should not deserialize with legacy mode"
@@ -93,7 +98,10 @@ fn test_cross_format_deserialization_fails() {
         if (test_legacy[0] & 0x80) == 0 {
             // Found a key with Y=0 in legacy format
             // This should definitely fail modern deserialization
-            let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&test_legacy, SerializationFormat::Modern);
+            let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(
+                &test_legacy,
+                SerializationFormat::Modern,
+            );
             assert!(
                 result.is_err(),
                 "Legacy Y=0 bytes should not deserialize with modern mode"
@@ -104,7 +112,6 @@ fn test_cross_format_deserialization_fails() {
     }
     assert!(found_y0, "Should find at least one Y=0 case");
 }
-
 
 #[test]
 fn test_verify_secure_legacy_compatibility() {
@@ -189,16 +196,23 @@ fn test_legacy_coefficient_generation_differs() {
     let raw_sigs = vec![*sig1.as_raw_value(), *sig2.as_raw_value()];
 
     // Aggregate with different modes
-    let agg_legacy =
-        aggregate_secure_with_mode::<Bls12381G2Impl>(&[pk1, pk2], &raw_sigs, SerializationFormat::Legacy).unwrap();
+    let agg_legacy = aggregate_secure_with_mode::<Bls12381G2Impl>(
+        &[pk1, pk2],
+        &raw_sigs,
+        SerializationFormat::Legacy,
+    )
+    .unwrap();
 
-    let agg_modern =
-        aggregate_secure_with_mode::<Bls12381G2Impl>(&[pk1, pk2], &raw_sigs, SerializationFormat::Modern).unwrap();
+    let agg_modern = aggregate_secure_with_mode::<Bls12381G2Impl>(
+        &[pk1, pk2],
+        &raw_sigs,
+        SerializationFormat::Modern,
+    )
+    .unwrap();
 
     // The aggregated signatures should be different
     assert_ne!(agg_legacy, agg_modern);
 }
-
 
 #[test]
 fn test_legacy_bit_patterns() {
@@ -227,15 +241,20 @@ fn test_error_messages() {
     // Test that error messages are helpful
     let invalid_g1 = vec![0xFF; 48]; // Invalid point
 
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&invalid_g1, SerializationFormat::Modern);
+    let result =
+        PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&invalid_g1, SerializationFormat::Modern);
     assert!(result.is_err());
 
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&invalid_g1, SerializationFormat::Legacy);
+    let result =
+        PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&invalid_g1, SerializationFormat::Legacy);
     assert!(result.is_err());
 
     // Test invalid length
     let short_bytes = vec![0x00; 47];
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&short_bytes, SerializationFormat::Modern);
+    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(
+        &short_bytes,
+        SerializationFormat::Modern,
+    );
     match result {
         Err(BlsError::InvalidLength { expected, actual }) => {
             assert_eq!(expected, 48);

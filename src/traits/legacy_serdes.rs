@@ -18,7 +18,10 @@ pub trait LegacySerialize: Sized {
     /// # Arguments
     /// * `bytes` - The bytes to deserialize
     /// * `format` - The expected serialization format
-    fn deserialize_with_mode(bytes: &[u8], format: SerializationFormat) -> Result<Self, crate::BlsError>;
+    fn deserialize_with_mode(
+        bytes: &[u8],
+        format: SerializationFormat,
+    ) -> Result<Self, crate::BlsError>;
 }
 
 /// Trait for G1 point serialization with legacy support (48 bytes)
@@ -27,7 +30,10 @@ pub trait LegacyG1Point: Sized {
     fn serialize_g1(&self, format: SerializationFormat) -> [u8; 48];
 
     /// Deserialize G1 point with format selection
-    fn deserialize_g1(bytes: &[u8; 48], format: SerializationFormat) -> Result<Self, crate::BlsError>;
+    fn deserialize_g1(
+        bytes: &[u8; 48],
+        format: SerializationFormat,
+    ) -> Result<Self, crate::BlsError>;
 }
 
 /// Trait for G2 point serialization with legacy support (96 bytes)
@@ -36,5 +42,8 @@ pub trait LegacyG2Point: Sized {
     fn serialize_g2(&self, format: SerializationFormat) -> [u8; 96];
 
     /// Deserialize G2 point with format selection
-    fn deserialize_g2(bytes: &[u8; 96], format: SerializationFormat) -> Result<Self, crate::BlsError>;
+    fn deserialize_g2(
+        bytes: &[u8; 96],
+        format: SerializationFormat,
+    ) -> Result<Self, crate::BlsError>;
 }

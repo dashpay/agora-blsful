@@ -21,20 +21,30 @@ fn test_all_signature_schemes_legacy() {
 
         // Test modern format
         let modern_bytes = sig.to_bytes_with_mode(SerializationFormat::Modern);
-        let sig_modern =
-            Signature::<Bls12381G2Impl>::from_bytes_with_mode(&modern_bytes, *scheme, SerializationFormat::Modern)
-                .unwrap();
+        let sig_modern = Signature::<Bls12381G2Impl>::from_bytes_with_mode(
+            &modern_bytes,
+            *scheme,
+            SerializationFormat::Modern,
+        )
+        .unwrap();
         assert!(sig_modern.verify(&pk, msg).is_ok());
 
         // Test legacy format
         let legacy_bytes = sig.to_bytes_with_mode(SerializationFormat::Legacy);
-        let sig_legacy =
-            Signature::<Bls12381G2Impl>::from_bytes_with_mode(&legacy_bytes, *scheme, SerializationFormat::Legacy)
-                .unwrap();
+        let sig_legacy = Signature::<Bls12381G2Impl>::from_bytes_with_mode(
+            &legacy_bytes,
+            *scheme,
+            SerializationFormat::Legacy,
+        )
+        .unwrap();
         assert!(sig_legacy.verify(&pk, msg).is_ok());
 
         // Verify cross-format deserialization fails for appropriate cases
-        match Signature::<Bls12381G2Impl>::from_bytes_with_mode(&modern_bytes, *scheme, SerializationFormat::Legacy) {
+        match Signature::<Bls12381G2Impl>::from_bytes_with_mode(
+            &modern_bytes,
+            *scheme,
+            SerializationFormat::Legacy,
+        ) {
             Ok(_) => {
                 // Some cases might succeed due to point representation
                 // but they should produce different results
@@ -191,7 +201,8 @@ fn test_secure_aggregation_with_different_messages_legacy() {
             // Aggregate using legacy mode
             let test_raw_sigs: Vec<_> = test_sigs.iter().map(|s| *s.as_raw_value()).collect();
             let agg_legacy =
-                secure_aggregation::aggregate_secure_with_mode(&pks, &test_raw_sigs, format).unwrap();
+                secure_aggregation::aggregate_secure_with_mode(&pks, &test_raw_sigs, format)
+                    .unwrap();
 
             // Aggregate using modern mode
             let agg_modern = secure_aggregation::aggregate_secure(&pks, &test_raw_sigs).unwrap();
@@ -214,19 +225,22 @@ fn test_malformed_legacy_data() {
 
     // 1. Invalid length
     let short_data = vec![0x00; 47];
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&short_data, SerializationFormat::Legacy);
+    let result =
+        PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&short_data, SerializationFormat::Legacy);
     assert!(matches!(result, Err(BlsError::InvalidLength { .. })));
 
     // 2. Invalid legacy format with high bits set
     let mut bad_legacy = vec![0xFF; 48];
     bad_legacy[0] = 0xFF; // All bits set - invalid
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&bad_legacy, SerializationFormat::Legacy);
+    let result =
+        PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&bad_legacy, SerializationFormat::Legacy);
     assert!(result.is_err());
 
     // 3. Invalid modern format
     let mut bad_modern = vec![0x00; 48];
     bad_modern[0] = 0x40; // Bit 6 set but not bit 7 - invalid modern format
-    let result = PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&bad_modern, SerializationFormat::Modern);
+    let result =
+        PublicKey::<Bls12381G2Impl>::from_bytes_with_mode(&bad_modern, SerializationFormat::Modern);
     assert!(result.is_err());
 
     // 4. Test with signature (G2) malformed data
@@ -256,8 +270,10 @@ fn test_random_points_legacy_roundtrip() {
         let legacy = pk.to_bytes_with_mode(SerializationFormat::Legacy);
 
         // Roundtrip tests
-        let pk_modern = PublicKey::from_bytes_with_mode(&modern, SerializationFormat::Modern).unwrap();
-        let pk_legacy = PublicKey::from_bytes_with_mode(&legacy, SerializationFormat::Legacy).unwrap();
+        let pk_modern =
+            PublicKey::from_bytes_with_mode(&modern, SerializationFormat::Modern).unwrap();
+        let pk_legacy =
+            PublicKey::from_bytes_with_mode(&legacy, SerializationFormat::Legacy).unwrap();
 
         assert_eq!(pk, pk_modern);
         assert_eq!(pk, pk_legacy);
@@ -301,8 +317,10 @@ fn test_extended_public_key_legacy() {
     let parent_legacy = pk.to_bytes_with_mode(SerializationFormat::Legacy);
     let child_legacy = child_pk.to_bytes_with_mode(SerializationFormat::Legacy);
 
-    let parent_restored = PublicKey::from_bytes_with_mode(&parent_legacy, SerializationFormat::Legacy).unwrap();
-    let child_restored = PublicKey::from_bytes_with_mode(&child_legacy, SerializationFormat::Legacy).unwrap();
+    let parent_restored =
+        PublicKey::from_bytes_with_mode(&parent_legacy, SerializationFormat::Legacy).unwrap();
+    let child_restored =
+        PublicKey::from_bytes_with_mode(&child_legacy, SerializationFormat::Legacy).unwrap();
 
     assert_eq!(pk, parent_restored);
     assert_eq!(child_pk, child_restored);
@@ -365,8 +383,12 @@ fn test_batch_verification_legacy() {
         .iter()
         .map(|sig| {
             let bytes = sig.to_bytes_with_mode(SerializationFormat::Legacy);
-            Signature::<Bls12381G2Impl>::from_bytes_with_mode(&bytes, SignatureSchemes::Basic, SerializationFormat::Legacy)
-                .unwrap()
+            Signature::<Bls12381G2Impl>::from_bytes_with_mode(
+                &bytes,
+                SignatureSchemes::Basic,
+                SerializationFormat::Legacy,
+            )
+            .unwrap()
         })
         .collect();
 
@@ -416,12 +438,14 @@ fn test_mixed_y_coordinates() {
         if (legacy[0] & 0x80) == 0 {
             found_y0 = true;
             // Y=0 case - verify it roundtrips correctly
-            let restored = PublicKey::from_bytes_with_mode(&legacy, SerializationFormat::Legacy).unwrap();
+            let restored =
+                PublicKey::from_bytes_with_mode(&legacy, SerializationFormat::Legacy).unwrap();
             assert_eq!(pk, restored);
         } else {
             found_y1 = true;
             // Y=1 case - verify it roundtrips correctly
-            let restored = PublicKey::from_bytes_with_mode(&legacy, SerializationFormat::Legacy).unwrap();
+            let restored =
+                PublicKey::from_bytes_with_mode(&legacy, SerializationFormat::Legacy).unwrap();
             assert_eq!(pk, restored);
         }
 

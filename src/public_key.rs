@@ -169,7 +169,6 @@ where
         let point = C::PublicKey::deserialize_g1(&array, format)?;
         Ok(Self(point))
     }
-
 }
 
 impl<C: BlsSignatureImpl> PublicKey<C> {
