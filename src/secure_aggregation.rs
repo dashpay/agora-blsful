@@ -6,6 +6,51 @@
 use crate::*;
 use sha2::{Digest, Sha256};
 
+/// Convert a 32-byte big-endian hash to a scalar field element
+///
+/// This function:
+/// 1. Copies the hash into a scalar representation
+/// 2. Converts from big-endian to little-endian (as required by from_repr)
+/// 3. Performs automatic modular reduction via from_repr
+///
+/// # Arguments
+/// * `hash` - A 32-byte hash to convert to a scalar
+///
+/// # Returns
+/// * `Ok(scalar)` - The scalar field element
+/// * `Err` - If the representation is invalid or too small
+fn hash32_to_scalar<C: BlsSignatureImpl>(
+    hash: &[u8; 32],
+) -> BlsResult<<<C as Pairing>::PublicKey as Group>::Scalar> {
+    // Create a field element representation
+    let mut repr = <<<C as Pairing>::PublicKey as Group>::Scalar as PrimeField>::Repr::default();
+    let repr_bytes = repr.as_mut();
+
+    // Ensure we have enough space for the hash
+    if repr_bytes.len() < 32 {
+        return Err(BlsError::InvalidInputs(
+            "Field representation too small for 32-byte hash".to_string(),
+        ));
+    }
+
+    // Copy hash to the last 32 bytes of the representation
+    let offset = repr_bytes.len() - 32;
+    repr_bytes[offset..].copy_from_slice(hash);
+
+    // Zero out any prefix bytes
+    for byte in &mut repr_bytes[..offset] {
+        *byte = 0;
+    }
+
+    // Reverse bytes since from_repr expects little-endian but hash is big-endian
+    repr_bytes.reverse();
+
+    // Create scalar from representation - this automatically reduces modulo field order
+    <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
+        .into_option()
+        .ok_or_else(|| BlsError::InvalidInputs("Failed to create scalar from hash".to_string()))
+}
+
 /// Generate deterministic coefficients for secure aggregation
 ///
 /// This implementation matches the C++ bls-signatures library for compatibility:
@@ -58,41 +103,8 @@ fn hash_public_keys_with_sorted<C: BlsSignatureImpl>(
         hasher.update(base_hash);
         let hash: [u8; 32] = hasher.finalize().into();
 
-        // Convert to scalar using proper byte interpretation (matching C++)
-        // C++ does: bn_read_bin(computedTs[i], hash, 32); bn_mod_basic(computedTs[i], computedTs[i], order);
-        // This interprets the hash as a big-endian integer and reduces modulo field order
-
-        // Create a field element representation
-        let mut repr =
-            <<<C as Pairing>::PublicKey as Group>::Scalar as PrimeField>::Repr::default();
-        let repr_bytes = repr.as_mut();
-
-        // Copy the hash into the representation
-        // For BLS12-381, the scalar field is ~255 bits, stored in 32 bytes
-        // The hash is 32 bytes, so it fits directly
-        if repr_bytes.len() >= 32 {
-            // Copy hash to the least significant bytes (big-endian interpretation)
-            let offset = repr_bytes.len() - 32;
-            repr_bytes[offset..].copy_from_slice(&hash);
-            // Zero out any higher bytes
-            for byte in &mut repr_bytes[..offset] {
-                *byte = 0;
-            }
-            // Reverse bytes since from_repr expects little-endian but hash is big-endian
-            repr_bytes.reverse();
-        } else {
-            // This shouldn't happen for BLS12-381, but handle it gracefully
-            return Err(BlsError::InvalidInputs(
-                "Field representation too small".to_string(),
-            ));
-        }
-
-        // Create scalar from representation - this automatically reduces modulo field order
-        let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
-            .into_option()
-            .ok_or_else(|| {
-                BlsError::InvalidInputs("Failed to create scalar from hash".to_string())
-            })?;
+        // Convert hash to scalar with modular reduction
+        let scalar = hash32_to_scalar::<C>(&hash)?;
 
         // Check for zero coefficient (extremely unlikely)
         if scalar.is_zero().into() {
@@ -297,30 +309,8 @@ where
         hasher.update(base_hash);
         let hash: [u8; 32] = hasher.finalize().into();
 
-        // Convert to scalar using raw modular reduction (matching C++)
-        let mut repr =
-            <<<C as Pairing>::PublicKey as Group>::Scalar as PrimeField>::Repr::default();
-        let repr_bytes = repr.as_mut();
-
-        if repr_bytes.len() >= 32 {
-            let offset = repr_bytes.len() - 32;
-            repr_bytes[offset..].copy_from_slice(&hash);
-            for byte in &mut repr_bytes[..offset] {
-                *byte = 0;
-            }
-            // Reverse bytes since from_repr expects little-endian but hash is big-endian
-            repr_bytes.reverse();
-        } else {
-            return Err(BlsError::InvalidInputs(
-                "Field representation too small".to_string(),
-            ));
-        }
-
-        let scalar = <<C as Pairing>::PublicKey as Group>::Scalar::from_repr(repr)
-            .into_option()
-            .ok_or_else(|| {
-                BlsError::InvalidInputs("Failed to create scalar from hash".to_string())
-            })?;
+        // Convert hash to scalar with modular reduction
+        let scalar = hash32_to_scalar::<C>(&hash)?;
 
         if scalar.is_zero().into() {
             return Err(BlsError::InvalidCoefficient);
